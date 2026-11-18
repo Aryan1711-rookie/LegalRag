@@ -1,0 +1,19 @@
+
+[
+  {
+    "id": "legal_001",
+    "question": "What are the essential elements of a valid contract under Indian law?",
+    "ground_truth": "A valid contract requires an agreement enforceable by law, including competent parties, free consent, lawful consideration, lawful object, and other requirements under the Indian Contract Act, 1872.",
+    "relevant_pages": [1],
+    "relevant_chunks": [],
+    "category": "contract_law"
+  },
+  {
+    "id": "legal_002",
+    "question": "What is the difference between ratio decidendi and obiter dicta?",
+    "ground_truth": "Ratio decidendi is the legal principle necessary for deciding a case. Obiter dicta are judicial observations that are not essential to the decision.",
+    "relevant_pages": [1],
+    "relevant_chunks": [],
+    "category": "judicial_precedent"
+  }
+]
