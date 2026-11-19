@@ -1,0 +1,40 @@
+# Python environments
+venv/
+.venv/
+surya-venv/
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Node.js
+node_modules/
+dist/
+build/
+
+# AI models and binaries
+*.gguf
+*.safetensors
+*.pth
+*.pt
+*.onnx
+tools/
+
+# Cache
+.cache/
+.pytest_cache/
+.huggingface/
+
+# Temporary files
+tmp/
+temp/
+*.log
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -5,9 +5,9 @@ import re
 class CitationValidator:
 
     CITATION_PATTERN = re.compile(
-        r"\[Source\s*(\d+),\s*Page\s*(\d+)\]",
-        re.IGNORECASE
-    )
+    r"(?:\[|【)\s*Source\s*(\d+),\s*Page\s*(\d+)\s*(?:\]|】)",
+    re.IGNORECASE
+)
 
     def validate(self, answer: str, sources: list[dict]) -> dict:
 
@@ -51,7 +51,6 @@ class CitationValidator:
                 "chunk_id": source["chunk_id"]
             })
 
-        # Calculate unique citations
         unique_citations = {
             (
                 citation["source"],

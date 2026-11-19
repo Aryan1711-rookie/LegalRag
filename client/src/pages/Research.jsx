@@ -118,7 +118,7 @@ function AssistantPanel({
         setError("");
         return;
       }
-
+      setIsSaved(false);
       setError("");
       setIsAsking(false);
 
@@ -157,37 +157,7 @@ function AssistantPanel({
     };
   }, [urlChatId, setSelectedDocument]);
 
-  // ------------------------------
-  // Check saved status
-  // ------------------------------
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function checkSavedStatus() {
-      if (!chatId) {
-        setIsSaved(false);
-        return;
-      }
-
-      try {
-        const result = await getSavedChats();
-
-        if (!cancelled) {
-          setIsSaved(result.chats.some((chat) => chat.id === chatId));
-        }
-      } catch (err) {
-        console.error("Could not check saved status:", err);
-      }
-    }
-
-    checkSavedStatus();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [chatId]);
-
+  
   // ------------------------------
   // Auto-scroll conversation
   // ------------------------------
@@ -300,22 +270,28 @@ function AssistantPanel({
   // ------------------------------
 
   async function handleToggleSave() {
-    if (!chatId || isSaving) return;
+  if (!chatId || isSaving) return;
 
-    setIsSaving(true);
+  setIsSaving(true);
+  setError("");
 
-    try {
-      const result = await updateChatSavedStatus(chatId, !isSaved);
+  const nextSavedStatus = !isSaved;
 
-      setIsSaved(result.is_saved);
+  try {
+    const result = await updateChatSavedStatus(
+      chatId,
+      nextSavedStatus
+    );
 
-      window.dispatchEvent(new Event("saved-chats-updated"));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsSaving(false);
-    }
+    setIsSaved(result.is_saved);
+
+    window.dispatchEvent(new Event("saved-chats-updated"));
+  } catch (err) {
+    setError(err.message || "Could not update saved status.");
+  } finally {
+    setIsSaving(false);
   }
+}
 
   // ------------------------------
   // Empty document state
