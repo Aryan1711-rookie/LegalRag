@@ -17,7 +17,8 @@ import {
 import { ArrowUp, LoaderCircle, Bookmark, BookmarkCheck } from "lucide-react";
 
 import ChatMessage from "../components/ChatMessage.jsx";
-
+import DocumentProgress from "../components/DocumentProgress.jsx";
+import useDocumentProgress from "../hooks/useDocument.js";
 // ------------------------------
 // Research modes
 // ------------------------------
@@ -157,7 +158,6 @@ function AssistantPanel({
     };
   }, [urlChatId, setSelectedDocument]);
 
-  
   // ------------------------------
   // Auto-scroll conversation
   // ------------------------------
@@ -270,28 +270,25 @@ function AssistantPanel({
   // ------------------------------
 
   async function handleToggleSave() {
-  if (!chatId || isSaving) return;
+    if (!chatId || isSaving) return;
 
-  setIsSaving(true);
-  setError("");
+    setIsSaving(true);
+    setError("");
 
-  const nextSavedStatus = !isSaved;
+    const nextSavedStatus = !isSaved;
 
-  try {
-    const result = await updateChatSavedStatus(
-      chatId,
-      nextSavedStatus
-    );
+    try {
+      const result = await updateChatSavedStatus(chatId, nextSavedStatus);
 
-    setIsSaved(result.is_saved);
+      setIsSaved(result.is_saved);
 
-    window.dispatchEvent(new Event("saved-chats-updated"));
-  } catch (err) {
-    setError(err.message || "Could not update saved status.");
-  } finally {
-    setIsSaving(false);
+      window.dispatchEvent(new Event("saved-chats-updated"));
+    } catch (err) {
+      setError(err.message || "Could not update saved status.");
+    } finally {
+      setIsSaving(false);
+    }
   }
-}
 
   // ------------------------------
   // Empty document state
@@ -351,9 +348,7 @@ function AssistantPanel({
                       {[
                         message.sources?.length > 0 &&
                           `${message.sources.length} ${
-                            message.sources.length === 1
-                              ? "source"
-                              : "sources"
+                            message.sources.length === 1 ? "source" : "sources"
                           }`,
                         message.model,
                       ]
@@ -487,6 +482,10 @@ function Research() {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [documentError, setDocumentError] = useState("");
+  const [processingDocumentId, setProcessingDocumentId] = useState(null);
+
+  const { document: processingDocument, error: processingError } =
+    useDocumentProgress(processingDocumentId);
 
   // Reset URL to /research on a full page load.
   useEffect(() => {
@@ -522,6 +521,17 @@ function Research() {
       setIsLoading(false);
     }
   }, []);
+  useEffect(() => {
+    if (!processingDocument) return;
+
+    if (processingDocument.status === "completed") {
+      loadDocuments();
+    }
+
+    if (processingDocument.status === "failed") {
+      loadDocuments();
+    }
+  }, [processingDocument, loadDocuments]);
 
   // Theme
   useEffect(() => {
@@ -554,7 +564,10 @@ function Research() {
     setDocumentError("");
 
     try {
-      await uploadDocument(file);
+      const result = await uploadDocument(file);
+
+      setProcessingDocumentId(result.document_id);
+
       await loadDocuments();
     } catch (error) {
       setDocumentError(error.message);
@@ -589,7 +602,15 @@ function Research() {
               {documentError}
             </p>
           )}
+          {processingDocument && (
+            <DocumentProgress document={processingDocument} />
+          )}
 
+          {processingError && (
+            <p className="mb-3 text-center text-xs text-red-500">
+              {processingError}
+            </p>
+          )}
           {/* Assistant fills remaining height */}
           <div className="min-h-0 flex-1">
             <AssistantPanel

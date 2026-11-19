@@ -22,11 +22,16 @@ async function documentRequest(endpoint, options = {}) {
         ...options.headers,
       },
     });
-  } catch {
-    throw new Error(
-      "Cannot connect to the server. Check whether the backend is running."
-    );
+  }  catch (error) {
+  if (error.name === "AbortError") {
+    throw error;
   }
+
+  throw new Error(
+    "Cannot connect to the server. Check whether the backend is running."
+  );
+}
+  
 
   const data = await response.json().catch(() => ({}));
 
@@ -91,8 +96,11 @@ export async function getDocuments({
 // Get a single document
 // ------------------------------
 
-export async function getDocument(documentId) {
-  return documentRequest(`/${encodeURIComponent(documentId)}`);
+export async function getDocument(documentId, signal) {
+  return documentRequest(
+    `/${encodeURIComponent(documentId)}`,
+    { signal }
+  );
 }
 
 // ------------------------------

@@ -14,7 +14,8 @@ class DocumentRepository:
     total_pages: int,
     user_id: str,
     file_path: str | None = None,
-    status: str = "processing"
+    status: str = "processing",
+    file_hash: str | None = None
     ):
         document_data = {
             "title": title,
@@ -22,7 +23,8 @@ class DocumentRepository:
             "file_path": file_path,
             "total_pages": total_pages,
             "user_id": user_id,
-            "status": status
+            "status": status,
+            "file_hash": file_hash
         }
 
         response = (
@@ -169,8 +171,11 @@ class DocumentRepository:
             self.supabase
             .table("documents")
             .select(
-                "id, title, file_name, total_pages,status, created_at"
-            )
+    "id, title, file_name, total_pages, "
+    "status, created_at, progress, "
+    "processing_stage, error_message",
+    count="exact"
+)
             .eq("id", document_id)
             .eq("user_id", user_id)
             .limit(1)
@@ -241,6 +246,50 @@ class DocumentRepository:
             .table("documents")
             .update({"status": status})
             .eq("id", document_id)
+            .execute()
+        )
+
+        return response.data[0] if response.data else None
+    def update_document_progress(
+    self,
+    document_id: str,
+    progress: int,
+    processing_stage: str,
+    status: str = "processing",
+    error_message: str | None = None
+    ):
+        if not 0 <= progress <= 100:
+            raise ValueError("Progress must be between 0 and 100.")
+
+        if status not in {"processing", "completed", "failed"}:
+            raise ValueError("Invalid document status.")
+
+        response = (
+            self.supabase
+            .table("documents")
+            .update({
+                "progress": progress,
+                "processing_stage": processing_stage,
+                "status": status,
+                "error_message": error_message
+            })
+            .eq("id", document_id)
+            .execute()
+        )
+
+        return response.data[0] if response.data else None
+    def get_document_by_hash(
+    self,
+    user_id: str,
+    file_hash: str
+):
+        response = (
+            self.supabase
+            .table("documents")
+            .select("id, title, file_name, status")
+            .eq("user_id", user_id)
+            .eq("file_hash", file_hash)
+            .limit(1)
             .execute()
         )
 
