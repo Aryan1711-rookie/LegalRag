@@ -2,6 +2,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/v1/documents/",
+      "destination": "https://penny-comic-dive-bean.trycloudflare.com/api/v1/documents/"
+    },
+    {
+      "source": "/api/v1/documents",
+      "destination": "https://penny-comic-dive-bean.trycloudflare.com/api/v1/documents/"
+    },
+    {
       "source": "/health/:path*",
       "destination": "https://penny-comic-dive-bean.trycloudflare.com/health/:path*"
     },
