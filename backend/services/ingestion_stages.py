@@ -2,7 +2,9 @@ from enum import Enum
 
 
 class IngestionStage(str, Enum):
+
     UPLOADED = "uploaded"
+    QUEUED = "queued"
     PARSING = "parsing"
     NORMALIZING = "normalizing"
     CHUNKING = "chunking"
@@ -14,10 +16,12 @@ class IngestionStage(str, Enum):
 
 STAGE_PROGRESS = {
     IngestionStage.UPLOADED: 5,
+    IngestionStage.QUEUED: 5,
     IngestionStage.PARSING: 10,
-    IngestionStage.NORMALIZING: 40,
-    IngestionStage.CHUNKING: 50,
+    IngestionStage.NORMALIZING: 30,
+    IngestionStage.CHUNKING: 45,
     IngestionStage.EMBEDDING: 60,
-    IngestionStage.INDEXING: 85,
+    IngestionStage.INDEXING: 90,
     IngestionStage.COMPLETED: 100,
+    IngestionStage.FAILED: 0
 }

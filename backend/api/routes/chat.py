@@ -8,7 +8,6 @@ from database.document_repository import DocumentRepository
 from database.chat_repository import ChatRepository
 
 from api.schema.chat import ChatSaveRequest
-from database.chat_repository import ChatRepository
 
 router = APIRouter(
     prefix="/api/v1",
@@ -98,7 +97,8 @@ def chat(
 
         result = rag_service.answer_question(
             payload.question,
-            document_id=document_id
+            document_id=document_id,
+            user_id=user_id
         )
 
         # 5. Save the assistant's response.

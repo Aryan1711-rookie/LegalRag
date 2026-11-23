@@ -1,0 +1,36 @@
+# API
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic[email]
+email-validator
+python-dotenv
+
+# Database and Storage
+supabase==2.34.1
+httpx==0.28.1
+
+# Background Workers
+celery[redis]
+redis
+
+# Document Parsing
+PyMuPDF
+Pillow
+beautifulsoup4
+requests
+
+# OCR
+pytesseract
+opencv-python-headless
+
+
+# Embeddings and Retrieval
+sentence-transformers==6.3.0
+transformers==5.23.0
+numpy
+scikit-learn
+huggingface-hub
+
+# LLM
+groq

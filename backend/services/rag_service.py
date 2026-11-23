@@ -14,9 +14,11 @@ class RAGService:
     def answer_question(
         self,
         question: str,
-        document_id: str | None = None
+        document_id: str | None = None,
+        user_id: str | None = None
     ):
         return self.generation_service.generate_response(
             prompt=question,
-            document_id=document_id
+            document_id=document_id,
+            user_id=user_id
         )

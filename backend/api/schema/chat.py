@@ -31,6 +31,7 @@ class ChatResponse(BaseModel):
     sources: list[dict]
     citation_report: dict
     grounding_report: dict
+    performance: dict = Field(default_factory=dict)
 
     
 class ChatSaveRequest(BaseModel):

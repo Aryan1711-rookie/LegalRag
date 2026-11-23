@@ -22,7 +22,8 @@ from fastapi import (
 from api.schema.document import DocumentAcceptedResponse
 from api.dependencies.auth import get_current_user
 from database.document_repository import DocumentRepository
-
+from database.storage_repository import StorageRepository
+from workers.tasks import ingest_document
 
 router = APIRouter(
     prefix="/api/v1/documents",
@@ -39,60 +40,60 @@ logger = logging.getLogger(__name__)
 # Background document processing
 # ==================================================
 
-def process_document(
-    ingestion_service,
-    document_id: str,
-    temp_path: str,
-    title: str,
-    file_name: str,
-    user_id: str
-):
-    try:
-        ingestion_service.ingest_pdf(
-            pdf_path=temp_path,
-            user_id=user_id,
-            title=title,
-            original_file_name=file_name,
-            existing_document_id=document_id
-        )
+# def process_document(
+#     ingestion_service,
+#     document_id: str,
+#     temp_path: str,
+#     title: str,
+#     file_name: str,
+#     user_id: str
+# ):
+#     try:
+#         ingestion_service.ingest_pdf(
+#             pdf_path=temp_path,
+#             user_id=user_id,
+#             title=title,
+#             original_file_name=file_name,
+#             existing_document_id=document_id
+#         )
 
-    except Exception:
-        logger.exception(
-            "Ingestion failed for document %s",
-            document_id
-        )
+#     except Exception:
+#         logger.exception(
+#             "Ingestion failed for document %s",
+#             document_id
+#         )
 
-        try:
-            repository = DocumentRepository()
+#         try:
+#             repository = DocumentRepository()
 
-            document = repository.get_document_for_user(
-                document_id=document_id,
-                user_id=user_id
-            )
+#             document = repository.get_document_for_user(
+#                 document_id=document_id,
+#                 user_id=user_id
+#             )
 
-            if document and document["status"] == "processing":
+#             if document and document["status"] == "processing":
 
-                repository.update_document_progress(
-                    document_id=document_id,
-                    progress=document.get("progress") or 0,
-                    processing_stage="failed",
-                    status="failed",
-                    error_message="Document processing failed."
-                )
+#                 repository.update_document_progress(
+#                     document_id=document_id,
+#                     progress=document.get("progress") or 0,
+#                     processing_stage="failed",
+#                     status="failed",
+#                     error_message="Document processing failed."
+#                 )
 
-        except Exception:
-            logger.exception(
-                "Failed to update document status."
-            )
+#         except Exception:
+#             logger.exception(
+#                 "Failed to update document status."
+#             )
 
-    finally:
-        try:
-            Path(temp_path).unlink(missing_ok=True)
+#     finally:
+#         try:
+#             Path(temp_path).unlink(missing_ok=True)
 
-        except OSError:
-            logger.exception(
-                "Failed to delete temporary PDF."
-            )
+#         except OSError:
+#             logger.exception(
+#                 "Failed to delete temporary PDF."
+#             )
 
 
 # ==================================================
@@ -105,8 +106,6 @@ def process_document(
     status_code=202
 )
 def upload_document(
-    request: Request,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str | None = Form(default=None),
     user=Depends(get_current_user)
@@ -115,32 +114,46 @@ def upload_document(
     temp_path = None
     total_size = 0
     file_header = b""
-    task_scheduled = False
 
     document_id = None
     repository = None
 
-    # Initialize SHA-256 hasher
+    publish_attempted = False
+
     file_hasher = hashlib.sha256()
 
     try:
 
         # 1. Validate file extension
-        if (
-            not file.filename
-            or Path(file.filename).suffix.lower() != ".pdf"
-        ):
+
+        allowed_extensions = {
+            ".pdf",
+            ".png",
+            ".jpg",
+            ".jpeg"
+        }
+
+        if not file.filename:
             raise HTTPException(
                 status_code=400,
-                detail="Only PDF files are supported."
+                detail="Filename is required."
+            )
+
+        extension = Path(file.filename).suffix.lower()
+
+        if extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail="Only PDF, PNG and JPEG files are supported."
             )
 
         user_id = str(user.id)
 
-        # 2. Save uploaded PDF and calculate hash
+        # 2. Save temporary file and calculate hash
+
         with NamedTemporaryFile(
             delete=False,
-            suffix=".pdf"
+            suffix=extension
         ) as temp_file:
 
             temp_path = Path(temp_file.name)
@@ -152,38 +165,54 @@ def upload_document(
                 if total_size > MAX_FILE_SIZE:
                     raise HTTPException(
                         status_code=413,
-                        detail="PDF file exceeds the 20 MB limit."
+                        detail="File exceeds the 20 MB limit."
                     )
 
-                # Calculate hash incrementally
                 file_hasher.update(content)
 
-                if len(file_header) < 5:
+                if len(file_header) < 8:
                     file_header += content[
-                        :5 - len(file_header)
+                        :8 - len(file_header)
                     ]
 
                 temp_file.write(content)
 
-        # 3. Validate PDF
+        # 3. Validate file content
+
         if total_size == 0:
             raise HTTPException(
                 status_code=400,
                 detail="Uploaded file is empty."
             )
 
-        if file_header != b"%PDF-":
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid PDF file."
+        if extension == ".pdf":
+            valid_file = file_header.startswith(b"%PDF-")
+
+        elif extension == ".png":
+            valid_file = file_header.startswith(
+                b"\x89PNG\r\n\x1a\n"
             )
 
-        # 4. Generate final SHA-256 hash
+        elif extension in {".jpg", ".jpeg"}:
+            valid_file = file_header.startswith(
+                b"\xff\xd8\xff"
+            )
+
+        else:
+            valid_file = False
+
+        if not valid_file:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or corrupted file."
+            )
+
+        # 4. Check duplicate document
+
         file_hash = file_hasher.hexdigest()
 
         repository = DocumentRepository()
 
-        # 5. Check for duplicate document
         existing_document = repository.get_document_by_hash(
             user_id=user_id,
             file_hash=file_hash
@@ -192,42 +221,47 @@ def upload_document(
         if existing_document:
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    "This document has already been uploaded."
-                )
+                detail="This document has already been uploaded."
             )
 
-        # 6. Get page count without OCR
-        try:
-            with pymupdf.open(str(temp_path)) as pdf:
+        # 5. Determine page count
 
-                if pdf.needs_pass:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            "Password-protected PDFs "
-                            "are not supported."
+        if extension == ".pdf":
+
+            try:
+                with pymupdf.open(str(temp_path)) as pdf:
+
+                    if pdf.needs_pass:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                "Password-protected PDFs "
+                                "are not supported."
+                            )
                         )
-                    )
 
-                total_pages = len(pdf)
+                    total_pages = len(pdf)
 
-        except HTTPException:
-            raise
+            except HTTPException:
+                raise
 
-        except Exception:
-            raise HTTPException(
-                status_code=400,
-                detail="Unable to open PDF."
-            )
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unable to open PDF."
+                )
+
+        else:
+            total_pages = 1
 
         if total_pages == 0:
             raise HTTPException(
                 status_code=400,
-                detail="PDF contains no pages."
+                detail="Document contains no pages."
             )
 
-        # 7. Create document record
+        # 6. Create document record
+
         document_title = (
             title.strip()
             if title and title.strip()
@@ -235,18 +269,18 @@ def upload_document(
         )
 
         try:
+
             document = repository.create_document(
                 title=document_title,
                 file_name=file.filename,
                 total_pages=total_pages,
                 user_id=user_id,
-                status="processing",
+                status="queued",
                 file_hash=file_hash
             )
 
         except APIError as error:
 
-            # Handle simultaneous duplicate uploads
             if error.code == "23505":
 
                 duplicate = repository.get_document_by_hash(
@@ -267,13 +301,39 @@ def upload_document(
 
         document_id = document["id"]
 
-        # 8. Initialize processing progress
+        # 7. Upload original file to Supabase Storage
+
+        storage_repository = StorageRepository()
+
+        object_path = storage_repository.upload_document(
+            file_path=str(temp_path),
+            user_id=user_id,
+            document_id=document_id
+        )
+
+        # 8. Store object path in database
+
+        updated_document = (
+            repository.update_document_file_path(
+                document_id=document_id,
+                user_id=user_id,
+                file_path=object_path
+            )
+        )
+
+        if not updated_document:
+            raise RuntimeError(
+                "Unable to save document storage path."
+            )
+
+        # 9. Initialize processing progress
+
         updated_document = (
             repository.update_document_progress(
                 document_id=document_id,
                 progress=5,
                 processing_stage="uploaded",
-                status="processing"
+                status="queued"
             )
         )
 
@@ -282,26 +342,26 @@ def upload_document(
                 "Unable to initialize document progress."
             )
 
-        # 9. Schedule background ingestion
-        background_tasks.add_task(
-            process_document,
-            ingestion_service=request.app.state.ingestion_service,
-            document_id=document_id,
-            temp_path=str(temp_path),
-            title=document_title,
-            file_name=file.filename,
-            user_id=user_id
+        # 10. Submit ingestion task to Celery
+
+        publish_attempted = True
+
+        task = ingest_document.delay(document_id)
+
+        logger.info(
+            "Ingestion task %s submitted for document %s",
+            task.id,
+            document_id
         )
 
-        task_scheduled = True
+        # 11. Return immediately
 
-        # 10. Return immediately
         return {
             "document_id": document_id,
             "title": document_title,
             "file_name": file.filename,
             "total_pages": total_pages,
-            "status": "processing",
+            "status": "queued",
             "progress": 5,
             "processing_stage": "uploaded"
         }
@@ -313,10 +373,13 @@ def upload_document(
 
         logger.exception("Document upload failed.")
 
-        # Handle failures after document creation
-        if document_id and repository and not task_scheduled:
+        # Only mark failed if task publication has not
+        # been attempted. A broker error can be ambiguous.
+
+        if document_id and repository and not publish_attempted:
 
             try:
+
                 repository.update_document_progress(
                     document_id=document_id,
                     progress=0,
@@ -332,6 +395,12 @@ def upload_document(
                     "Failed to update document status."
                 )
 
+        if publish_attempted:
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to confirm task submission."
+            )
+
         raise HTTPException(
             status_code=500,
             detail="Unable to schedule document processing."
@@ -339,22 +408,21 @@ def upload_document(
 
     finally:
 
-        # Background task owns the file once scheduled
-        if temp_path and not task_scheduled:
+        # Celery downloads from Storage.
+        # The API no longer needs its temporary file.
+
+        if temp_path:
 
             try:
                 temp_path.unlink(missing_ok=True)
 
             except OSError:
                 logger.exception(
-                    "Failed to delete temporary PDF."
+                    "Failed to delete temporary file."
                 )
 
         file.file.close()
 
-
-# ==================================================
-# List documents
 # ==================================================
 
 @router.get("/")
@@ -379,6 +447,7 @@ def list_documents(
         )
 
     if status and status not in {
+        "queued",
         "processing",
         "completed",
         "failed"
@@ -446,9 +515,11 @@ def delete_document(
 
     repository = DocumentRepository()
 
+    user_id = str(user.id)
+
     document = repository.get_document_for_user(
         document_id=document_id,
-        user_id=str(user.id)
+        user_id=user_id
     )
 
     if not document:
@@ -457,19 +528,58 @@ def delete_document(
             detail="Document not found."
         )
 
-    # Prevent deletion during active ingestion
-    if document["status"] == "processing":
+    if document["status"] in {"queued", "processing"}:
+
         raise HTTPException(
             status_code=409,
-            detail=(
-                "Cannot delete a document while "
-                "it is being processed."
-            )
+            detail="Cannot delete a queued or processing document."
         )
 
-    deleted_document = repository.delete_document_for_user(
-        document_id=document_id,
-        user_id=str(user.id)
+    # Delete the stored original, if present.
+
+    if document.get("file_path"):
+
+        storage = StorageRepository()
+
+        extension = Path(
+            document["file_name"]
+        ).suffix.lower()
+
+        expected_path = storage.build_object_path(
+            user_id=user_id,
+            document_id=document_id,
+            extension=extension
+        )
+
+        if document["file_path"] != expected_path:
+            raise HTTPException(
+                status_code=409,
+                detail="Unexpected document storage path."
+            )
+
+        try:
+
+            storage.delete_document(
+                user_id=user_id,
+                document_id=document_id,
+                extension=extension
+            )
+
+        except Exception:
+            logger.exception(
+                "Document storage deletion failed."
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to delete stored document."
+            )
+
+    deleted_document = (
+        repository.delete_document_for_user(
+            document_id=document_id,
+            user_id=user_id
+        )
     )
 
     if not deleted_document:

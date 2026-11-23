@@ -1,0 +1,35 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+ENV HF_HOME=/home/worker/.cache/huggingface
+ENV TOKENIZERS_PARALLELISM=false
+
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir \
+    -r requirements.txt "celery[redis]"
+
+RUN useradd --create-home worker
+
+RUN mkdir -p /home/worker/.cache/huggingface \
+    && chown -R worker:worker /home/worker/.cache
+
+COPY --chown=worker:worker database/ ./database/
+COPY --chown=worker:worker services/ ./services/
+COPY --chown=worker:worker rag/ ./rag/
+COPY --chown=worker:worker workers/ ./workers/
+COPY --chown=worker:worker api/ ./api/
+
+USER worker
+CMD ["python", "-m", "celery", "-A", "workers.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=1"]

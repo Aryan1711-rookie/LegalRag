@@ -143,7 +143,7 @@ class DocumentRepository:
             query = query.ilike("title", f"%{search}%")
 
         if status:
-            if status not in {"processing", "completed", "failed"}:
+            if status not in {"queued", "processing", "completed", "failed"}:
                 raise ValueError("Invalid document status.")
 
             query = query.eq("status", status)
@@ -261,7 +261,12 @@ class DocumentRepository:
         if not 0 <= progress <= 100:
             raise ValueError("Progress must be between 0 and 100.")
 
-        if status not in {"processing", "completed", "failed"}:
+        if status not in {
+        "queued",
+        "processing",
+        "completed",
+        "failed"
+    }:
             raise ValueError("Invalid document status.")
 
         response = (
@@ -292,5 +297,52 @@ class DocumentRepository:
             .limit(1)
             .execute()
         )
+
+        return response.data[0] if response.data else None
+
+    def get_document_by_id(self, document_id: str):
+
+        response = (
+            self.supabase
+            .table("documents")
+            .select(
+                "id, user_id, title, file_name, "
+                "file_path, status, total_pages"
+            )
+            .eq("id", document_id)
+            .limit(1)
+            .execute()
+        )
+
+        return response.data[0] if response.data else None
+
+
+    def update_document_file_path(
+    self,
+    document_id: str,
+    user_id: str,
+    file_path: str
+):
+        response = (
+            self.supabase
+            .table("documents")
+            .update({
+                "file_path": file_path
+            })
+            .eq("id", document_id)
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+        return response.data[0] if response.data else None
+
+    def claim_document(self, document_id: str):
+
+        response = self.supabase.rpc(
+            "claim_document",
+            {
+                "p_document_id": document_id
+            }
+        ).execute()
 
         return response.data[0] if response.data else None

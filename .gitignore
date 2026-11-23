@@ -1,40 +1,22 @@
-# Python environments
-venv/
-.venv/
-surya-venv/
-__pycache__/
-*.py[cod]
-
-# Environment variables
+# Environment and secrets
 .env
 .env.*
 !.env.example
 
-# Node.js
-node_modules/
-dist/
-build/
+# Python environments
+venv/
+.venv/
+__pycache__/
+*.pyc
 
-# AI models and binaries
+# Hugging Face models and wheels
+hf_cache/
+wheels/
 *.gguf
-*.safetensors
-*.pth
-*.pt
-*.onnx
-tools/
 
-# Cache
-.cache/
-.pytest_cache/
-.huggingface/
+# Generated exports
+backend/project_code.txt
+backend/export_code.py
 
-# Temporary files
-tmp/
-temp/
-*.log
-
-# IDE and OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+# Local testing assets
+backend/rag/test/

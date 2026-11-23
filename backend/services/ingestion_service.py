@@ -3,13 +3,23 @@ from pathlib import Path
 
 import pymupdf
 
-from rag.ingestion.parser import extract_text
+from rag.ingestion.parser import (
+    extract_text,
+    extract_image_text
+)
 from rag.ingestion.normalize import normalize_text
-from rag.ingestion.chunking import chunk_pages
+# from rag.ingestion.chunking import chunk_pages
+from rag.ingestion.chunking_router import (
+    route_chunking
+)
 from database.document_repository import DocumentRepository
 from services.ingestion_stages import (
     IngestionStage,
     STAGE_PROGRESS
+)
+
+from rag.ingestion.classifiers.document_classifier import (
+    DocumentClassifier
 )
 
 
@@ -18,6 +28,7 @@ class IngestionService:
     def __init__(self, embedding_manager):
         self.embedding_manager = embedding_manager
         self.document_repository = DocumentRepository()
+        self.document_classifier = DocumentClassifier()
 
     def _update_progress(
         self,
@@ -55,17 +66,29 @@ class IngestionService:
 
         if not pdf_path.exists():
             raise FileNotFoundError(
-                f"PDF not found: {pdf_path}"
+                f"File not found: {pdf_path}"
             )
 
-        if pdf_path.suffix.lower() != ".pdf":
+        allowed_extensions = {
+            ".pdf",
+            ".png",
+            ".jpg",
+            ".jpeg"
+        }
+
+        extension = pdf_path.suffix.lower()
+
+        if extension not in allowed_extensions:
             raise ValueError(
-                "Only PDF files are supported."
+                "Only PDF, PNG and JPEG files are supported."
             )
 
         # 1. Determine page count without performing OCR
-        with pymupdf.open(str(pdf_path)) as pdf:
-            total_pages = len(pdf)
+        if extension == ".pdf":
+            with pymupdf.open(str(pdf_path)) as pdf:
+                total_pages = len(pdf)
+        else:
+            total_pages = 1
 
         if total_pages == 0:
             raise ValueError("PDF contains no pages.")
@@ -85,7 +108,7 @@ class IngestionService:
 
             document_id = document["id"]
 
-        current_stage = IngestionStage.UPLOADED
+        current_stage = IngestionStage.PARSING
 
         try:
             self._update_progress(
@@ -94,6 +117,7 @@ class IngestionService:
             )
 
             # 3. PDF parsing
+            # 3. Document parsing
             current_stage = IngestionStage.PARSING
 
             self._update_progress(
@@ -103,16 +127,37 @@ class IngestionService:
 
             start = time.perf_counter()
 
-            pages = extract_text(str(pdf_path))
-
-            performance["parsing_seconds"] = round(
-                time.perf_counter() - start, 4
-            )
+            if extension == ".pdf":
+                pages = extract_text(str(pdf_path))
+            else:
+                pages = extract_image_text(str(pdf_path))
+                performance["parsing_seconds"] = round(
+                            time.perf_counter() - start, 4
+                        )
 
             if not pages:
                 raise ValueError(
-                    "No pages found in the PDF."
+                    "No pages extracted from the file."
                 )
+            # Document-level classification
+
+            classification_start = time.perf_counter()
+
+            classification = self.document_classifier.classify(
+                pages
+            )
+
+            document_type = classification["document_type"]
+
+            performance["classification_seconds"] = round(
+                time.perf_counter() - classification_start,
+                4
+            )
+
+            print("\n========== DOCUMENT CLASSIFICATION ==========")
+            print("Document type:", document_type)
+            print("Score:", classification["score"])
+            print("Scores:", classification["scores"])
 
             # 4. Normalization
             current_stage = IngestionStage.NORMALIZING
@@ -141,7 +186,7 @@ class IngestionService:
                 for page in normalized_pages
             ):
                 raise ValueError(
-                    "No readable text found in the PDF."
+                    "No readable text found in the document."
                 )
 
             # 5. Chunking
@@ -154,13 +199,15 @@ class IngestionService:
 
             start = time.perf_counter()
 
-            chunks = chunk_pages(
-                normalized_pages,
-                chunk_size=chunk_size,
-                overlap=overlap,
-                source=file_name,
-                document_title=document_title
-            )
+            chunks = route_chunking(
+    pages=pages,
+    normalized_pages=normalized_pages,
+    document_type=document_type,
+    source=file_name,
+    document_title=document_title,
+    chunk_size=chunk_size,
+    overlap=overlap
+)
 
             performance["chunking_seconds"] = round(
                 time.perf_counter() - start, 4
