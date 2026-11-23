@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://ppc-born-larry-argue.trycloudflare.com/api/:path*"
+      "destination": "https://penny-comic-dive-bean.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
