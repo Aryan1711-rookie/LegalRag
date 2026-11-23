@@ -17,7 +17,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 import Header from "../components/Header.jsx";
 import Preloader from "../components/Preloader.jsx";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const FEATURES = [
   {
@@ -154,7 +154,7 @@ function useBackendStatus() {
       const timeout = setTimeout(() => controller.abort(), 5000);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/health`, {
+        const response = await fetch(`${API_BASE_URL}/health/ready`, {
           signal: controller.signal,
           cache: "no-store",
         });
