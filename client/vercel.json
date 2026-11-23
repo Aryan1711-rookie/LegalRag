@@ -2,6 +2,10 @@
 {
   "rewrites": [
     {
+      "source": "/health/:path*",
+      "destination": "https://penny-comic-dive-bean.trycloudflare.com/health/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://penny-comic-dive-bean.trycloudflare.com/api/:path*"
     },
