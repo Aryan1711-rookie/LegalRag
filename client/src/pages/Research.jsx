@@ -19,6 +19,9 @@ import { ArrowUp, LoaderCircle, Bookmark, BookmarkCheck } from "lucide-react";
 import ChatMessage from "../components/ChatMessage.jsx";
 import DocumentProgress from "../components/DocumentProgress.jsx";
 import useDocumentProgress from "../hooks/useDocument.js";
+import AttachmentButton from "../components/AttachmentButton.jsx";
+import { getDocumentId, getDocumentUrl } from "../utils/documentUrl.js";
+import MessageSources from "../components/MessageSources.jsx";
 // ------------------------------
 // Research modes
 // ------------------------------
@@ -62,20 +65,16 @@ const MODE_PROMPTS = {
     "Compare the relevant judgments available in the selected document. Analyze their facts, legal issues, applicable provisions, judicial reasoning, ratio decidendi, final decisions, and similarities or differences. Support each comparison with page references.",
 };
 
-// Warm, calm styling shared by the small selects
-const pillSelect =
-  "max-w-full cursor-pointer rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-xs font-medium text-[#6b6a68] outline-none transition hover:bg-[#f0eee6] focus:bg-[#f0eee6] dark:text-[#b8b6ad] dark:hover:bg-[#3a3a37] dark:focus:bg-[#3a3a37]";
-
 // ------------------------------
 // AI Assistant
 // ------------------------------
 
 function AssistantPanel({
-  documents,
   selectedDocument,
-  setSelectedDocument,
   isLoading,
   greeting,
+  onUpload,
+  isUploading,
 }) {
   const navigate = useNavigate();
   const { chatId: urlChatId } = useParams();
@@ -93,10 +92,18 @@ function AssistantPanel({
 
   const [researchMode, setResearchMode] = useState("documents");
 
-  const readyDocuments = documents.filter((doc) => doc.status === "completed");
+  const documentReady = selectedDocument?.status === "completed";
+  const [chatReady, setChatReady] = useState(!urlChatId);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const canSubmit =
-    !isAsking && question.trim().length > 0 && !!selectedDocument;
+    !isAsking && chatReady && documentReady && question.trim().length > 0;
 
   const placeholder = RESEARCH_MODES.find(
     (mode) => mode.id === researchMode,
@@ -113,6 +120,7 @@ function AssistantPanel({
 
     async function loadChat() {
       if (!urlChatId) {
+        setChatReady(true);
         setChatId(null);
         setMessages([]);
         setIsSaved(false);
@@ -120,33 +128,50 @@ function AssistantPanel({
         return;
       }
       setIsSaved(false);
+      setChatReady(false);
       setError("");
       setIsAsking(false);
+
+      if (!selectedDocument?.id) return;
 
       try {
         const result = await getChatMessages(urlChatId);
 
         if (cancelled) return;
 
+        if (result.chat.document_id !== selectedDocument.id) {
+          throw new Error(
+            "This conversation does not belong to the selected document.",
+          );
+        }
         setChatId(result.chat.id);
-        setSelectedDocument(result.chat.document_id || "");
 
         setMessages(
           (result.messages || []).map((message) => ({
             role: message.role,
             content: message.content,
+            sources: message.sources,
+            model: message.model,
           })),
         );
+        setChatReady(true);
 
-        const savedChats = await getSavedChats();
-
-        if (!cancelled) {
-          setIsSaved(savedChats.chats.some((chat) => chat.id === urlChatId));
+        setIsSaved(Boolean(result.chat.is_saved));
+        try {
+          const savedChats = await getSavedChats();
+          if (!cancelled) {
+            setIsSaved(
+              (savedChats.chats || []).some((chat) => chat.id === urlChatId),
+            );
+          }
+        } catch {
+          // A bookmark-list failure should not discard loaded messages.
         }
       } catch (err) {
         if (!cancelled) {
           setError(err.message);
           setMessages([]);
+          setChatReady(false);
         }
       }
     }
@@ -156,7 +181,7 @@ function AssistantPanel({
     return () => {
       cancelled = true;
     };
-  }, [urlChatId, setSelectedDocument]);
+  }, [urlChatId, selectedDocument?.id]);
 
   // ------------------------------
   // Auto-scroll conversation
@@ -176,7 +201,7 @@ function AssistantPanel({
   async function submitQuestion(value) {
     const userQuestion = value.trim();
 
-    if (!userQuestion || !selectedDocument || isAsking) return;
+    if (!userQuestion || !documentReady || !chatReady || isAsking) return;
 
     setIsAsking(true);
     setError("");
@@ -185,7 +210,12 @@ function AssistantPanel({
     setMessages((prev) => [...prev, { role: "user", content: userQuestion }]);
 
     try {
-      const result = await askQuestion(userQuestion, selectedDocument, chatId);
+      const result = await askQuestion(
+        userQuestion,
+        selectedDocument.id,
+        chatId,
+      );
+      if (!mounted.current) return;
 
       setMessages((prev) => [
         ...prev,
@@ -201,7 +231,7 @@ function AssistantPanel({
         setChatId(result.chat_id);
 
         if (!urlChatId) {
-          navigate(`/research/${result.chat_id}`, {
+          navigate(getDocumentUrl(selectedDocument, result.chat_id), {
             replace: true,
           });
         }
@@ -232,7 +262,7 @@ function AssistantPanel({
 
     if (!prompt) return;
 
-    if (selectedDocument) {
+    if (documentReady && chatReady) {
       submitQuestion(prompt);
     } else {
       setQuestion(prompt);
@@ -251,26 +281,11 @@ function AssistantPanel({
   }
 
   // ------------------------------
-  // Document selection
-  // ------------------------------
-
-  function handleDocumentChange(e) {
-    setSelectedDocument(e.target.value);
-    setChatId(null);
-    setMessages([]);
-    setQuestion("");
-    setIsSaved(false);
-    setError("");
-
-    navigate("/research", { replace: true });
-  }
-
-  // ------------------------------
   // Save chat
   // ------------------------------
 
   async function handleToggleSave() {
-    if (!chatId || isSaving) return;
+    if (!chatId || !chatReady || isSaving) return;
 
     setIsSaving(true);
     setError("");
@@ -291,39 +306,47 @@ function AssistantPanel({
   }
 
   // ------------------------------
-  // Empty document state
-  // ------------------------------
-
-  if (!isLoading && readyDocuments.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center text-center">
-        <h1 className="font-serif text-3xl text-[#3d3929] dark:text-[#faf9f5]">
-          {greeting}
-        </h1>
-
-        <p className="mt-3 text-sm text-[#6b6a68] dark:text-[#b8b6ad]">
-          Upload a PDF from the sidebar to start your research.
-        </p>
-      </div>
-    );
-  }
-
-  // ------------------------------
   // Assistant layout
   // ------------------------------
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <div
+        className="mb-2 flex shrink-0 items-center gap-2 rounded-xl bg-[#f0eee6]/70 text-xs text-[#6b6a68] dark:bg-[#30302e] dark:text-[#b8b6ad]"
+        style={{ padding: "9px 14px" }}
+      >
+        {documentReady && (
+          <span
+            className="shrink-0 rounded-full bg-emerald-500"
+            style={{ width: 6, height: 6 }}
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">
+          {isLoading
+            ? "Loading documents…"
+            : selectedDocument?.title ||
+              "Select a document from the sidebar to begin."}
+        </span>
+        {selectedDocument && urlChatId && (
+          <button
+            type="button"
+            onClick={() => navigate(getDocumentUrl(selectedDocument))}
+            className="shrink-0 font-medium text-[#192957] hover:underline dark:text-[#a9b8f0]"
+          >
+            New chat
+          </button>
+        )}
+      </div>
       {/* Save chat */}
       {chatId && (
         <div className="flex shrink-0 justify-end pb-1">
           <button
             type="button"
             onClick={handleToggleSave}
-            disabled={isSaving}
+            disabled={isSaving || !chatReady}
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
               isSaved
-                ? "text-[#c96442] dark:text-[#d97757]"
+                ? "text-[#192957] dark:text-[#a9b8f0]"
                 : "text-[#83827d] hover:bg-[#f0eee6] hover:text-[#3d3929] dark:text-[#9c9a92] dark:hover:bg-[#3a3a37] dark:hover:text-[#faf9f5]"
             }`}
           >
@@ -342,20 +365,17 @@ function AssistantPanel({
               <div key={index} className="space-y-2">
                 <ChatMessage role={message.role} content={message.content} />
 
-                {message.role === "assistant" &&
-                  (message.sources?.length > 0 || message.model) && (
-                    <p className="ml-1 text-[11px] text-[#9c9a92]">
-                      {[
-                        message.sources?.length > 0 &&
-                          `${message.sources.length} ${
-                            message.sources.length === 1 ? "source" : "sources"
-                          }`,
-                        message.model,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  )}
+                {message.role === "assistant" && (
+                  <>
+                    <MessageSources sources={message.sources} />
+
+                    {message.model && (
+                      <p className="ml-[46px] text-[11px] text-[#9c9a92]">
+                        {message.model}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             ))}
 
@@ -363,8 +383,8 @@ function AssistantPanel({
             {isAsking && (
               <div className="flex items-center gap-2.5 text-sm text-[#83827d] dark:text-[#9c9a92]">
                 <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#c96442] opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#c96442]" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#192957] opacity-50 dark:bg-[#a9b8f0]" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#192957] dark:bg-[#a9b8f0]" />
                 </span>
                 Thinking…
               </div>
@@ -375,7 +395,14 @@ function AssistantPanel({
         </div>
       ) : (
         <div className="flex flex-1 items-end justify-center pb-8">
-          <h1 className="text-center font-serif text-3xl text-[#3d3929] dark:text-[#faf9f5] sm:text-4xl">
+          <h1
+            className="text-center font-serif text-[#3d3929] dark:text-[#faf9f5]"
+            style={{
+              fontSize: "clamp(2.25rem, 5vw, 3rem)",
+              lineHeight: 1.15,
+              letterSpacing: "-0.02em",
+            }}
+          >
             {greeting}
           </h1>
         </div>
@@ -391,7 +418,7 @@ function AssistantPanel({
       {/* Composer */}
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 rounded-2xl border border-[#e8e6dc] bg-white p-3 shadow-[0_2px_12px_rgba(61,57,41,0.06)] transition focus-within:border-[#d9d6c8] focus-within:shadow-[0_4px_20px_rgba(61,57,41,0.1)] dark:border-[#3d3d3a] dark:bg-[#30302e] dark:shadow-none dark:focus-within:border-[#52524e]"
+        className="shrink-0 rounded-2xl border border-[#e8e6dc] bg-white p-3 shadow-[0_2px_12px_rgba(61,57,41,0.06)] transition focus-within:border-[#192957]/40 focus-within:ring-4 focus-within:ring-[#192957]/10 dark:border-[#3d3d3a] dark:bg-[#30302e] dark:shadow-none dark:focus-within:border-[#a9b8f0]/40 dark:focus-within:ring-[#a9b8f0]/10"
       >
         <textarea
           value={question}
@@ -405,27 +432,18 @@ function AssistantPanel({
         />
 
         <div className="mt-2 flex items-center justify-between gap-3">
-          <select
-            value={selectedDocument}
-            onChange={handleDocumentChange}
-            aria-label="Select a document"
-            className={`${pillSelect} max-w-[220px] truncate`}
-          >
-            <option value="">Choose document</option>
+          {/* Left side controls */}
+          <div className="flex min-w-0 items-center gap-2">
+            <AttachmentButton onUpload={onUpload} isUploading={isUploading} />
+          </div>
 
-            {readyDocuments.map((doc) => (
-              <option key={doc.id} value={doc.id}>
-                {doc.title}
-              </option>
-            ))}
-          </select>
-
+          {/* Send button */}
           <button
             type="submit"
             id="research-submit"
             disabled={!canSubmit}
             aria-label="Send question"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#c96442] text-white transition hover:bg-[#b5573a] disabled:cursor-not-allowed disabled:bg-[#e8e6dc] disabled:text-[#b8b6ad] dark:disabled:bg-[#3d3d3a] dark:disabled:text-[#6b6a68]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#192957] text-white transition hover:bg-[#223675] disabled:cursor-not-allowed disabled:bg-[#e8e6dc] disabled:text-[#b8b6ad] dark:bg-[#a9b8f0] dark:text-[#192957] dark:hover:bg-[#c4cff5] dark:disabled:bg-[#3d3d3a] dark:disabled:text-[#6b6a68]"
           >
             {isAsking ? (
               <LoaderCircle size={17} className="animate-spin" />
@@ -450,7 +468,7 @@ function AssistantPanel({
             aria-pressed={researchMode === mode.id}
             className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
               researchMode === mode.id
-                ? "border-[#c96442]/30 bg-[#c96442]/10 text-[#b5573a] dark:border-[#d97757]/30 dark:bg-[#d97757]/10 dark:text-[#d97757]"
+                ? "border-[#192957]/25 bg-[#192957]/[0.07] text-[#192957] dark:border-[#a9b8f0]/30 dark:bg-[#a9b8f0]/10 dark:text-[#a9b8f0]"
                 : "border-[#e8e6dc] text-[#6b6a68] hover:bg-white hover:text-[#3d3929] dark:border-[#3d3d3a] dark:text-[#b8b6ad] dark:hover:bg-[#30302e] dark:hover:text-[#faf9f5]"
             }`}
           >
@@ -471,13 +489,17 @@ function AssistantPanel({
 
 function Research() {
   const { user } = useAuth();
+  const { documentSlug, chatId } = useParams();
 
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem("legalmind-theme") === "dark",
   );
 
   const [documents, setDocuments] = useState([]);
-  const [selectedDocument, setSelectedDocument] = useState("");
+  const selectedDocumentId = getDocumentId(documentSlug);
+  const selectedDocument = documents.find(
+    (doc) => doc.id === selectedDocumentId,
+  );
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -487,34 +509,23 @@ function Research() {
   const { document: processingDocument, error: processingError } =
     useDocumentProgress(processingDocumentId);
 
-  // Reset URL to /research on a full page load.
-  useEffect(() => {
-    window.history.replaceState(null, "", "/research");
-  }, []);
-
   const loadDocuments = useCallback(async () => {
     setIsLoading(true);
     setDocumentError("");
 
     try {
-      const result = await getDocuments({
-        limit: 20,
-        offset: 0,
-      });
-
-      const loaded = result.documents || [];
+      const loaded = [];
+      const limit = 100;
+      let offset = 0;
+      while (true) {
+        const result = await getDocuments({ limit, offset });
+        const batch = result.documents || [];
+        loaded.push(...batch);
+        offset += batch.length;
+        if (batch.length < limit || offset >= result.total_documents) break;
+      }
 
       setDocuments(loaded);
-
-      setSelectedDocument((current) => {
-        const stillExists = loaded.some(
-          (doc) => doc.id === current && doc.status === "completed",
-        );
-
-        if (stillExists) return current;
-
-        return loaded.find((doc) => doc.status === "completed")?.id || "";
-      });
     } catch (error) {
       setDocumentError(error.message);
     } finally {
@@ -547,16 +558,24 @@ function Research() {
 
   // Upload document
   async function handleUpload(file) {
-    if (file.size > 20 * 1024 * 1024) {
-      setDocumentError("PDF file must be smaller than 20 MB.");
+    if (!file) return;
+
+    const allowedExtensions = [".pdf", ".png", ".jpg", ".jpeg"];
+
+    const fileName = file.name.toLowerCase();
+
+    if (!allowedExtensions.some((ext) => fileName.endsWith(ext))) {
+      setDocumentError("Only PDF, PNG and JPEG files are supported.");
       return;
     }
 
-    if (
-      file.type !== "application/pdf" &&
-      !file.name.toLowerCase().endsWith(".pdf")
-    ) {
-      setDocumentError("Only PDF files are supported.");
+    if (file.size === 0) {
+      setDocumentError("The selected file is empty.");
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      setDocumentError("File must not exceed 20 MB.");
       return;
     }
 
@@ -591,11 +610,15 @@ function Research() {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode((prev) => !prev)}
       />
-
-      <Sidebar onUpload={handleUpload} isUploading={isUploading} />
+      <Sidebar
+        onUpload={handleUpload}
+        isUploading={isUploading}
+        documents={documents}
+        isLoadingDocuments={isLoading}
+      />
 
       <main className="ml-[260px] h-screen overflow-hidden pt-[74px]">
-        <div className="mx-auto flex h-full w-full max-w-3xl flex-col px-6 pb-5 pt-4">
+        <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-6 pb-5 pt-4">
           {/* Document error */}
           {documentError && (
             <p className="mb-3 shrink-0 text-center text-xs text-red-500">
@@ -614,11 +637,12 @@ function Research() {
           {/* Assistant fills remaining height */}
           <div className="min-h-0 flex-1">
             <AssistantPanel
-              documents={documents}
+              key={`${selectedDocumentId || "home"}:${chatId || "new"}`}
               selectedDocument={selectedDocument}
-              setSelectedDocument={setSelectedDocument}
               isLoading={isLoading}
               greeting={greeting}
+              onUpload={handleUpload}
+              isUploading={isUploading}
             />
           </div>
         </div>

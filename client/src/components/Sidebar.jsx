@@ -1,6 +1,5 @@
-
 import { useState, useEffect, useCallback } from "react";
-import { NavLink, Link, useLocation } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import {
   Search,
@@ -9,25 +8,68 @@ import {
   BriefcaseBusiness,
   Settings,
   FilePlus2,
+  FileText,
+  Image,
   LoaderCircle,
   MessageSquare,
+  ChevronDown,
+  ChevronRight,
+  AlertCircle,
+  ArrowRight,
 } from "lucide-react";
 
 import { getSavedChats } from "../services/chat.js";
+import { getDocumentUrl, getDocumentId } from "../utils/documentUrl.js";
 
 const navigation = [
   { label: "Research", path: "/research", icon: Search },
   { label: "Judgments", path: "/judgments", icon: Bookmark },
-  { label: "Documents", path: "/documents", icon: Files },
+  { label: "Documents", icon: Files },
   { label: "Cases", path: "/cases", icon: BriefcaseBusiness },
 ];
 
-function Sidebar({ onUpload, isUploading = false }) {
+/*
+  Palette
+  Navy accent  #192957  (light)  /  #a9b8f0 (dark)
+  Border       #e8e6dc  (light)  /  #3d3d3a (dark)
+  Paper        #faf9f5  (light)  /  #30302e (dark hover)
+*/
+
+const ITEM_ACTIVE =
+  "bg-[#192957]/[0.07] font-medium text-[#192957] dark:bg-[#a9b8f0]/10 dark:text-[#a9b8f0]";
+
+const ITEM_IDLE =
+  "text-[#6b6a68] hover:bg-[#faf9f5] hover:text-[#3d3929] dark:text-[#b8b6ad] dark:hover:bg-[#30302e] dark:hover:text-[#faf9f5]";
+
+const NAV_ITEM =
+  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] transition";
+
+const SUB_ITEM =
+  "flex items-center gap-2 rounded-lg px-2 py-2.5 text-xs transition";
+
+const SECTION_LABEL =
+  "text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9c9a92]";
+
+const DIVIDER = "border-[#f0eee6] dark:border-[#3d3d3a]";
+
+function Sidebar({
+  onUpload,
+  isUploading = false,
+  documents = [],
+  isLoadingDocuments = false,
+}) {
   const [savedChats, setSavedChats] = useState([]);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [chatError, setChatError] = useState("");
+  const [documentsOpen, setDocumentsOpen] = useState(true);
 
   const location = useLocation();
+
+  const currentSlug = location.pathname.split("/")[2];
+
+  const activeDocumentId = getDocumentId(
+    currentSlug ? decodeURIComponent(currentSlug) : null,
+  );
 
   const loadSavedChats = useCallback(async () => {
     setIsLoadingChats(true);
@@ -47,47 +89,160 @@ function Sidebar({ onUpload, isUploading = false }) {
     loadSavedChats();
   }, [loadSavedChats, location.pathname]);
 
-  // Refresh whenever a conversation is saved or unsaved.
   useEffect(() => {
-    const handleSavedChatsUpdate = () => {
-      loadSavedChats();
-    };
+    const handleUpdate = () => loadSavedChats();
 
-    window.addEventListener(
-      "saved-chats-updated",
-      handleSavedChatsUpdate
-    );
+    window.addEventListener("saved-chats-updated", handleUpdate);
 
     return () => {
-      window.removeEventListener(
-        "saved-chats-updated",
-        handleSavedChatsUpdate
-      );
+      window.removeEventListener("saved-chats-updated", handleUpdate);
     };
   }, [loadSavedChats]);
 
-  return (
-    <aside className="fixed bottom-0 left-0 top-[74px] z-40 flex w-[260px] flex-col border-r border-slate-200 bg-white px-3 py-5 transition-colors dark:border-slate-800 dark:bg-[#111827]">
+  function getChatUrl(chat) {
+    const document = documents.find((doc) => doc.id === chat.document_id);
 
+    if (document) {
+      return getDocumentUrl(document, chat.id);
+    }
+
+    if (chat.document_id) {
+      return getDocumentUrl(
+        {
+          id: chat.document_id,
+          title: "Document",
+        },
+        chat.id,
+      );
+    }
+
+    return null;
+  }
+
+  return (
+    <aside className="fixed bottom-0 left-0 top-[74px] z-40 flex w-[260px] flex-col border-r border-[#e8e6dc] bg-white px-3 py-5 transition-colors dark:border-[#3d3d3a] dark:bg-[#262624]">
       {/* Workspace */}
-      <p className="mb-3 px-2 text-[10px] font-semibold tracking-wider text-slate-400 dark:text-slate-500">
-        WORKSPACE
-      </p>
+
+      <p className={`mb-3 px-3 ${SECTION_LABEL}`}>Workspace</p>
 
       <nav className="flex flex-col gap-1">
         {navigation.map((item) => {
           const Icon = item.icon;
 
+          if (item.label === "Documents") {
+            return (
+              <div key={item.label}>
+                <button
+                  type="button"
+                  aria-expanded={documentsOpen}
+                  onClick={() => setDocumentsOpen((prev) => !prev)}
+                  className={`${NAV_ITEM} w-full ${ITEM_IDLE}`}
+                >
+                  <Files size={17} strokeWidth={1.8} />
+
+                  <span className="flex-1 text-left">Documents</span>
+
+                  <span className="text-[11px] text-[#9c9a92]">
+                    {documents.length}
+                  </span>
+
+                  {documentsOpen ? (
+                    <ChevronDown size={14} className="text-[#9c9a92]" />
+                  ) : (
+                    <ChevronRight size={14} className="text-[#9c9a92]" />
+                  )}
+                </button>
+
+                {/* Document List */}
+
+                {documentsOpen && (
+                  <div className="ml-5 mt-1 max-h-56 space-y-0.5 overflow-y-auto border-l border-[#e8e6dc] pl-2 dark:border-[#3d3d3a]">
+                    {isLoadingDocuments ? (
+                      <div className="flex items-center gap-2 px-2 py-3 text-xs text-[#9c9a92]">
+                        <LoaderCircle size={13} className="animate-spin" />
+                        Loading documents…
+                      </div>
+                    ) : documents.length === 0 ? (
+                      <p className="px-2 py-3 text-xs text-[#9c9a92]">
+                        No documents uploaded.
+                      </p>
+                    ) : (
+                      documents.slice(0, 3).map((doc) => {
+                        const extension = doc.file_name
+                          ?.split(".")
+                          .pop()
+                          ?.toLowerCase();
+
+                        const isImage = ["png", "jpg", "jpeg"].includes(
+                          extension,
+                        );
+
+                        const DocumentIcon = isImage ? Image : FileText;
+
+                        const isReady = doc.status === "completed";
+
+                        const isActive = activeDocumentId === doc.id;
+
+                        if (!isReady) {
+                          return (
+                            <div
+                              key={doc.id}
+                              className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-[#9c9a92]"
+                            >
+                              {doc.status === "failed" ? (
+                                <AlertCircle
+                                  size={14}
+                                  className="shrink-0 text-red-500"
+                                />
+                              ) : (
+                                <LoaderCircle
+                                  size={14}
+                                  className="shrink-0 animate-spin"
+                                />
+                              )}
+
+                              <span className="truncate">{doc.title}</span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <NavLink
+                            key={doc.id}
+                            to={getDocumentUrl(doc)}
+                            title={doc.title}
+                            className={`${SUB_ITEM} ${
+                              isActive ? ITEM_ACTIVE : ITEM_IDLE
+                            }`}
+                          >
+                            <DocumentIcon size={14} className="shrink-0" />
+
+                            <span className="truncate">{doc.title}</span>
+                          </NavLink>
+                        );
+                      })
+                    )}
+
+                    <NavLink
+                      to="/documents"
+                      className="mt-2 flex items-center justify-between rounded-lg px-2 py-2 text-xs font-medium text-[#192957] transition hover:bg-[#192957]/[0.05] dark:text-[#a9b8f0] dark:hover:bg-[#a9b8f0]/10"
+                    >
+                      <span>View all documents</span>
+                      <ArrowRight size={14} />
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           return (
             <NavLink
               key={item.label}
               to={item.path}
+              end
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs transition ${
-                  isActive
-                    ? "bg-blue-50 font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-                }`
+                `${NAV_ITEM} ${isActive ? ITEM_ACTIVE : ITEM_IDLE}`
               }
             >
               <Icon size={17} strokeWidth={1.8} />
@@ -97,10 +252,11 @@ function Sidebar({ onUpload, isUploading = false }) {
         })}
       </nav>
 
-      {/* Upload PDF */}
-      <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+      {/* Upload Document */}
+
+      <div className={`mt-4 border-t pt-4 ${DIVIDER}`}>
         <label
-          className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#192957] px-3 py-3 text-xs font-medium text-white transition hover:bg-blue-900 ${
+          className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#192957] px-3 py-3 text-[13px] font-medium text-white transition hover:bg-[#223675] dark:bg-[#a9b8f0] dark:text-[#192957] dark:hover:bg-[#c4cff5] ${
             isUploading ? "cursor-not-allowed opacity-70" : ""
           }`}
         >
@@ -110,11 +266,11 @@ function Sidebar({ onUpload, isUploading = false }) {
             <FilePlus2 size={17} />
           )}
 
-          {isUploading ? "Uploading..." : "Upload PDF"}
+          {isUploading ? "Uploading…" : "Upload Document"}
 
           <input
             type="file"
-            accept=".pdf,application/pdf"
+            accept=".pdf,.png,.jpg,.jpeg"
             className="hidden"
             disabled={isUploading}
             onChange={(e) => {
@@ -131,69 +287,75 @@ function Sidebar({ onUpload, isUploading = false }) {
       </div>
 
       {/* Saved Chats */}
-      <div className="mt-6 flex min-h-0 flex-1 flex-col border-t border-slate-100 pt-5 dark:border-slate-800">
-        <div className="mb-3 flex items-center justify-between px-2">
-          <p className="text-[10px] font-semibold tracking-wider text-slate-400 dark:text-slate-500">
-            SAVED CHATS
-          </p>
 
-          <Bookmark size={14} className="text-slate-400" />
+      <div className={`mt-6 flex min-h-0 flex-1 flex-col border-t pt-5 ${DIVIDER}`}>
+        <div className="mb-3 flex items-center justify-between px-3">
+          <p className={SECTION_LABEL}>Saved chats</p>
+
+          <Bookmark size={14} className="text-[#9c9a92]" />
         </div>
 
-        <div className="flex-1 space-y-1 overflow-y-auto">
+        <div className="flex-1 space-y-0.5 overflow-y-auto">
           {isLoadingChats ? (
-            <div className="flex items-center gap-2 px-2 py-3 text-xs text-slate-400">
+            <div className="flex items-center gap-2 px-3 py-3 text-xs text-[#9c9a92]">
               <LoaderCircle size={14} className="animate-spin" />
-              Loading saved chats...
+              Loading saved chats…
             </div>
           ) : chatError ? (
-            <p className="px-2 py-3 text-xs text-red-500">
-              {chatError}
-            </p>
+            <p className="px-3 py-3 text-xs text-red-500">{chatError}</p>
           ) : savedChats.length === 0 ? (
-            <p className="px-2 py-3 text-xs leading-5 text-slate-400 dark:text-slate-500">
-              No saved conversations yet. Bookmark a research chat to find it here.
+            <p className="px-3 py-3 text-xs leading-5 text-[#9c9a92]">
+              No saved conversations yet.
             </p>
           ) : (
-            savedChats.map((chat) => (
-              <NavLink
-                key={chat.id}
-                to={`/research/${chat.id}`}
-                title={chat.title}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 rounded-lg px-2 py-2.5 text-xs transition ${
-                    isActive
-                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
-                      : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-                  }`
-                }
-              >
-                <MessageSquare size={14} className="shrink-0" />
+            savedChats.map((chat) => {
+              const chatUrl = getChatUrl(chat);
 
-                <span className="min-w-0 flex-1 truncate">
-                  {chat.title || "Untitled conversation"}
-                </span>
+              if (!chatUrl) {
+                return (
+                  <p
+                    key={chat.id}
+                    className="px-3 py-2 text-xs text-[#9c9a92]"
+                  >
+                    {chat.title || "Untitled conversation"}
+                  </p>
+                );
+              }
 
-                <Bookmark
-                  size={12}
-                  className="shrink-0 text-blue-500"
-                />
-              </NavLink>
-            ))
+              return (
+                <NavLink
+                  key={chat.id}
+                  to={chatUrl}
+                  title={chat.title}
+                  end
+                  className={({ isActive }) =>
+                    `${SUB_ITEM} px-3 ${isActive ? ITEM_ACTIVE : ITEM_IDLE}`
+                  }
+                >
+                  <MessageSquare size={14} className="shrink-0" />
+
+                  <span className="min-w-0 flex-1 truncate">
+                    {chat.title || "Untitled conversation"}
+                  </span>
+
+                  <Bookmark
+                    size={12}
+                    className="shrink-0 text-[#192957] dark:text-[#a9b8f0]"
+                  />
+                </NavLink>
+              );
+            })
           )}
         </div>
       </div>
 
       {/* Settings */}
-      <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+
+      <div className={`mt-4 border-t pt-3 ${DIVIDER}`}>
         <NavLink
           to="/settings"
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs transition ${
-              isActive
-                ? "bg-blue-50 font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
-                : "text-slate-600 hover:bg-slate-50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-            }`
+            `${NAV_ITEM} ${isActive ? ITEM_ACTIVE : ITEM_IDLE}`
           }
         >
           <Settings size={17} strokeWidth={1.8} />

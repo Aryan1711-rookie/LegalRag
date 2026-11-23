@@ -6,15 +6,15 @@ export default function useDocumentProgress(documentId) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    setDocument(null);
+    setError("");
+
     if (!documentId) return;
 
     let cancelled = false;
     let timer;
 
     const controller = new AbortController();
-
-    setDocument(null);
-    setError("");
 
     async function poll() {
       try {
@@ -29,10 +29,12 @@ export default function useDocumentProgress(documentId) {
         setError("");
 
         if (
-          result.status !== "completed" &&
-          result.status !== "failed"
+          ["queued", "processing"].includes(result.status)
         ) {
-          timer = setTimeout(poll, 2000);
+          timer = setTimeout(
+            poll,
+            result.status === "queued" ? 5000 : 2000
+          );
         }
       } catch (error) {
         if (cancelled || error.name === "AbortError") {
@@ -40,6 +42,9 @@ export default function useDocumentProgress(documentId) {
         }
 
         setError(error.message);
+
+        // Recover from temporary connection failures.
+        timer = setTimeout(poll, 5000);
       }
     }
 
