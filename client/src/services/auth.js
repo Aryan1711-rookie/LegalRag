@@ -42,6 +42,7 @@ async function authRequest(endpoint, payload) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify(payload),
     });
@@ -147,6 +148,7 @@ export async function getCurrentUser() {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        "ngrok-skip-browser-warning": "true",
       },
     });
   } catch {
