@@ -69,29 +69,66 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Login
+  // const login = useCallback(async (credentials) => {
+  //   setIsLoading(true);
+  //   setAuthError(null);
+
+  //   try {
+  //     await loginUser(credentials);
+
+  //     const currentUser = await getCurrentUser();
+
+  //     if (!currentUser) {
+  //       throw new Error("Unable to retrieve authenticated user.");
+  //     }
+
+  //     setUser(currentUser);
+
+  //     return currentUser;
+  //   } catch (error) {
+  //     setAuthError(error.message);
+  //     throw error;
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // }, []);
+
   const login = useCallback(async (credentials) => {
-    setIsLoading(true);
-    setAuthError(null);
+  setIsLoading(true);
+  setAuthError(null);
 
-    try {
-      await loginUser(credentials);
+  try {
+    console.log("[AUTH] Starting login request");
 
-      const currentUser = await getCurrentUser();
+    const loginResponse = await loginUser(credentials);
 
-      if (!currentUser) {
-        throw new Error("Unable to retrieve authenticated user.");
-      }
+    console.log("[AUTH] Login response received", {
+      hasAccessToken: Boolean(loginResponse?.access_token),
+      hasRefreshToken: Boolean(loginResponse?.refresh_token),
+    });
 
-      setUser(currentUser);
+    console.log("[AUTH] Fetching current user");
 
-      return currentUser;
-    } catch (error) {
-      setAuthError(error.message);
-      throw error;
-    } finally {
-      setIsLoading(false);
+    const currentUser = await getCurrentUser();
+
+    console.log("[AUTH] Current user retrieved:", Boolean(currentUser));
+
+    if (!currentUser) {
+      throw new Error("Unable to retrieve authenticated user.");
     }
-  }, []);
+
+    setUser(currentUser);
+    return currentUser;
+
+  } catch (error) {
+    console.error("[AUTH] Login failed:", error.message);
+    setAuthError(error.message);
+    throw error;
+
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
 
   // Logout
   const logout = useCallback(() => {
