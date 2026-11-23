@@ -1,4 +1,4 @@
-
+import { apiFetch } from "./apiFetch";
 const API_BASE_URL = "";
 // ------------------------------
 // API request helper
@@ -38,7 +38,7 @@ async function authRequest(endpoint, payload) {
   let response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/auth/${endpoint}`, {
+    response = await apiFetch(`${API_BASE_URL}/api/v1/auth/${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -144,7 +144,7 @@ export async function getCurrentUser() {
   let response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+    response = await apiFetch(`${API_BASE_URL}/api/v1/auth/me`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,

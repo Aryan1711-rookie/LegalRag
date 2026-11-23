@@ -1,6 +1,6 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
-
+import { apiFetch } from "./apiFetch";
 export async function askQuestion(
   question,
   documentId,
@@ -15,7 +15,7 @@ export async function askQuestion(
   let response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+    response = await apiFetch(`${API_BASE_URL}/api/v1/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -52,7 +52,7 @@ export async function getSavedChats() {
     throw new Error("Please log in again.");
   }
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/v1/chats/saved`,
     {
       headers: {
@@ -78,7 +78,7 @@ export async function updateChatSavedStatus(chatId, isSaved) {
     throw new Error("Please log in again.");
   }
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/v1/chats/${chatId}/saved`,
     {
       method: "PATCH",
@@ -109,7 +109,7 @@ export async function getChatMessages(chatId) {
     throw new Error("Please log in again.");
   }
 
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/api/v1/chats/${chatId}/messages`,
     {
       headers: {

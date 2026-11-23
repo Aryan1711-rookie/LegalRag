@@ -1,6 +1,6 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
-
+import { apiFetch } from "./apiFetch";
 // ------------------------------
 // Authenticated API request helper
 // ------------------------------
@@ -15,7 +15,7 @@ async function documentRequest(endpoint, options = {}) {
   let response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/v1/documents${endpoint}`, {
+    response = await apiFetch(`${API_BASE_URL}/api/v1/documents${endpoint}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${accessToken}`,

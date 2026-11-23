@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-
+import { apiFetch } from "../services/apiFetch.js";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -154,7 +154,7 @@ function useBackendStatus() {
       const timeout = setTimeout(() => controller.abort(), 5000);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/health/ready`, {
+        const response = await apiFetch(`${API_BASE_URL}/health/ready`, {
           signal: controller.signal,
           cache: "no-store",
           headers: {
