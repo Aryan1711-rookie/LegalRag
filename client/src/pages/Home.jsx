@@ -17,7 +17,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 import Header from "../components/Header.jsx";
 import Preloader from "../components/Preloader.jsx";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const API_BASE_URL = "";
 
 const FEATURES = [
   {
