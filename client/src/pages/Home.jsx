@@ -157,6 +157,9 @@ function useBackendStatus() {
         const response = await fetch(`${API_BASE_URL}/health/ready`, {
           signal: controller.signal,
           cache: "no-store",
+          headers: {
+    "ngrok-skip-browser-warning": "true",
+  },
         });
 
         if (!response.ok) {
