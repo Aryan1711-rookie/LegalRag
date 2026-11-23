@@ -4,8 +4,37 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 // API request helper
 // ------------------------------
 
+// async function authRequest(endpoint, payload) {
+//   // #const {login, isLoading} = useAuth();
+//   let response;
+
+//   try {
+//     response = await fetch(`${API_BASE_URL}/api/v1/auth/${endpoint}`, {
+      
+//       method: "POST",
+//       headers: {
+//         "Content-Type": "application/json",
+//       },
+//       body: JSON.stringify(payload),
+//     });
+//   } catch {
+//     throw new Error(
+//       "Cannot connect to the server. Check whether the backend is running."
+//     );
+//   }
+
+//   const data = await response.json().catch(() => ({}));
+
+//   if (!response.ok) {
+//     throw new Error(
+//       data.detail || data.message || "Authentication failed."
+//     );
+//   }
+
+//   return data;
+// }
+
 async function authRequest(endpoint, payload) {
-  // #const {login, isLoading} = useAuth();
   let response;
 
   try {
@@ -16,18 +45,36 @@ async function authRequest(endpoint, payload) {
       },
       body: JSON.stringify(payload),
     });
-  } catch {
+  } catch (error) {
+    console.error("[AUTH] Network error:", error);
+
     throw new Error(
       "Cannot connect to the server. Check whether the backend is running."
     );
   }
 
+  // DEBUG: Inspect HTTP response without exposing credentials
+  console.log("[AUTH DEBUG]", {
+    endpoint,
+    status: response.status,
+    statusText: response.statusText,
+    url: response.url,
+    contentType: response.headers.get("content-type"),
+  });
+
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
-      data.detail || data.message || "Authentication failed."
-    );
+    const detail = data.detail ?? data.message;
+
+    const errorMessage =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((item) => item.msg || "Validation error").join("; ")
+          : `Authentication failed (HTTP ${response.status})`;
+
+    throw new Error(errorMessage);
   }
 
   return data;
