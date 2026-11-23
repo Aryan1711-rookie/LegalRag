@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 def extract_text(pdf_path: str):
+    ocr_enabled = (
+    os.getenv("OCR_ENABLED", "true").lower() == "true"
+)
 
     classifier = PDFClassifier()
 
@@ -90,6 +93,25 @@ def extract_text(pdf_path: str):
 
                     continue
 
+                if not ocr_enabled:
+                    logger.warning(
+                        "Skipping OCR-required page %s because OCR is disabled",
+                        page_number,
+                    )
+
+                    extracted_pages.append({
+                        "page_number": page_number,
+                        "text": "",
+                        "layout_text": "",
+                        "page_type": page_type,
+                        "extraction_method": "ocr_disabled",
+                        "metadata": {
+                            **classification,
+                            "ocr_skipped": True,
+                        },
+                    })
+
+                    continue
                 # Initialize OCR client only when needed
                 if ocr_client is None:
 

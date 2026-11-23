@@ -1,0 +1,63 @@
+name: legalmind
+
+x-backend: &backend
+  image: legalmind-backend:prod
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  env_file:
+    - ./backend/.env.production
+  environment:
+    CELERY_BROKER_URL: redis://redis:6379/0
+    CELERY_RESULT_BACKEND: redis://redis:6379/1
+    OCR_ENABLED: "false"
+    HF_HOME: /home/legalmind/.cache/huggingface
+  volumes:
+    - hf_cache:/home/legalmind/.cache/huggingface
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - internal
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    <<: *backend
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - internal
+    command:
+      - python
+      - -m
+      - celery
+      - -A
+      - workers.celery_app:celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+    healthcheck:
+      disable: true
+
+volumes:
+  hf_cache:
+  redis_data:
+
+networks:
+  internal:
+    driver: bridge

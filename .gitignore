@@ -19,4 +19,4 @@ backend/project_code.txt
 backend/export_code.py
 
 # Local testing assets
-backend/rag/test/
+backend/rag/test/   
