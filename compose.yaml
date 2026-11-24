@@ -1,0 +1,148 @@
+name: legalmind
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    restart: unless-stopped
+
+    volumes:
+      - type: bind
+        source: ${SURYA_MODEL_DIR:?Model directory must be configured}
+        target: /models
+        read_only: true
+
+    command:
+      - -m
+      - /models/surya-2.5.gguf
+      - --mmproj
+      - /models/surya-2.5-mmproj.gguf
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --parallel
+      - "1"
+      - --ctx-size
+      - "16384"
+      - --alias
+      - datalab-to/surya-ocr-2.5
+      - -ngl
+      - "0"
+      - --jinja
+      - --special
+
+  ocr:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+
+    image: legalmind-ocr:v1
+    restart: unless-stopped
+
+    env_file:
+      - ./ocr-service/.env
+
+    environment:
+      SURYA_INFERENCE_BACKEND: llamacpp
+      SURYA_INFERENCE_URL: http://llama:8080/v1
+      SURYA_INFERENCE_PARALLEL: "1"
+
+    depends_on:
+      llama:
+        condition: service_started
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    image: legalmind-backend:v1
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      OCR_SERVICE_URL: http://ocr:8001
+
+    volumes:
+      - hf_cache:/home/legalmind/.cache/huggingface
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: legalmind-backend:v1
+    restart: unless-stopped
+
+    command:
+      - python
+      - -m
+      - celery
+      - -A
+      - workers.celery_app:celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+
+    env_file:
+      - ./backend/.env
+
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      OCR_SERVICE_URL: http://ocr:8001
+
+    volumes:
+      - hf_cache:/home/legalmind/.cache/huggingface
+
+    healthcheck:
+      disable: true
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      ocr:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+
+    image: legalmind-frontend:v1
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:3000:80"
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  hf_cache:

@@ -13,7 +13,7 @@ from services.ingestion_service import IngestionService
 from api.routes.chat import router as chat_router
 from api.routes.documents import router as documents_router
 from api.routes.auth import router as auth_router
-
+from api.routes.web_research import router as web_research_router
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -94,6 +94,7 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(documents_router)
 app.include_router(auth_router)
+app.include_router(web_research_router)
 
 
 # Liveness endpoint

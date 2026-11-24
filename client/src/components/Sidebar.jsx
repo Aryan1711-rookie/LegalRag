@@ -57,6 +57,8 @@ function Sidebar({
   isUploading = false,
   documents = [],
   isLoadingDocuments = false,
+  mobile = false,
+  onNavigate,
 }) {
   const [savedChats, setSavedChats] = useState([]);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
@@ -64,6 +66,9 @@ function Sidebar({
   const [documentsOpen, setDocumentsOpen] = useState(true);
 
   const location = useLocation();
+
+  // Let the parent close the mobile drawer after navigation.
+  const handleNavigation = () => onNavigate?.();
 
   const currentSlug = location.pathname.split("/")[2];
 
@@ -120,7 +125,13 @@ function Sidebar({
   }
 
   return (
-    <aside className="fixed bottom-0 left-0 top-[74px] z-40 flex w-[260px] flex-col border-r border-[#e8e6dc] bg-white px-3 py-5 transition-colors dark:border-[#3d3d3a] dark:bg-[#262624]">
+    <aside
+      aria-label="Research sidebar"
+      className={`${mobile
+        ? "absolute inset-0 w-full pt-16"
+        : "fixed bottom-0 left-0 top-[74px] z-40 w-[260px] pt-5"
+      } flex min-h-0 flex-col overflow-hidden border-r border-[#e8e6dc] bg-white px-3 pb-[max(16px,env(safe-area-inset-bottom))] transition-colors dark:border-[#3d3d3a] dark:bg-[#262624]`}
+    >
       {/* Workspace */}
 
       <p className={`mb-3 px-3 ${SECTION_LABEL}`}>Workspace</p>
@@ -210,6 +221,7 @@ function Sidebar({
                           <NavLink
                             key={doc.id}
                             to={getDocumentUrl(doc)}
+                            onClick={handleNavigation}
                             title={doc.title}
                             className={`${SUB_ITEM} ${
                               isActive ? ITEM_ACTIVE : ITEM_IDLE
@@ -225,6 +237,7 @@ function Sidebar({
 
                     <NavLink
                       to="/documents"
+                      onClick={handleNavigation}
                       className="mt-2 flex items-center justify-between rounded-lg px-2 py-2 text-xs font-medium text-[#192957] transition hover:bg-[#192957]/[0.05] dark:text-[#a9b8f0] dark:hover:bg-[#a9b8f0]/10"
                     >
                       <span>View all documents</span>
@@ -240,6 +253,7 @@ function Sidebar({
             <NavLink
               key={item.label}
               to={item.path}
+              onClick={handleNavigation}
               end
               className={({ isActive }) =>
                 `${NAV_ITEM} ${isActive ? ITEM_ACTIVE : ITEM_IDLE}`
@@ -278,6 +292,7 @@ function Sidebar({
 
               if (file && onUpload) {
                 onUpload(file);
+                if (mobile) handleNavigation();
               }
 
               e.target.value = "";
@@ -326,6 +341,7 @@ function Sidebar({
                 <NavLink
                   key={chat.id}
                   to={chatUrl}
+                  onClick={handleNavigation}
                   title={chat.title}
                   end
                   className={({ isActive }) =>
@@ -354,6 +370,7 @@ function Sidebar({
       <div className={`mt-4 border-t pt-3 ${DIVIDER}`}>
         <NavLink
           to="/settings"
+          onClick={handleNavigation}
           className={({ isActive }) =>
             `${NAV_ITEM} ${isActive ? ITEM_ACTIVE : ITEM_IDLE}`
           }

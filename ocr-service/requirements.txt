@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+httpx
+pydantic
+Pillow
+surya-ocr==0.24.0

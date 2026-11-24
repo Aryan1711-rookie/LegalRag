@@ -1,9 +1,11 @@
 import json
 import re
 import os
+import logging
 from rag.generation.citation_validator import CitationValidator
 
 
+logger = logging.getLogger(__name__)
 class GroundingValidator:
 
     VALID_STATUSES = {
@@ -470,6 +472,18 @@ Return JSON only.
             block["id"]
             for block in blocks
         }
+
+        logger.info("Expected IDs: %s", sorted(expected_ids))
+
+        logger.info(
+            "Returned IDs: %s",
+            [
+                (item.get("id"), type(item.get("id")).__name__)
+                if isinstance(item, dict)
+                else ("invalid", type(item).__name__)
+                for item in evaluation["claims"]
+            ],
+        )
 
         verdicts = {}
 

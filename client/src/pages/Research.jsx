@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar.jsx";
 import Header from "../components/Header.jsx";
@@ -14,7 +14,7 @@ import {
   getChatMessages,
 } from "../services/chat.js";
 
-import { ArrowUp, LoaderCircle, Bookmark, BookmarkCheck } from "lucide-react";
+import { ArrowUp, LoaderCircle, Bookmark, BookmarkCheck, Menu, X } from "lucide-react";
 
 import ChatMessage from "../components/ChatMessage.jsx";
 import DocumentProgress from "../components/DocumentProgress.jsx";
@@ -22,6 +22,8 @@ import useDocumentProgress from "../hooks/useDocument.js";
 import AttachmentButton from "../components/AttachmentButton.jsx";
 import { getDocumentId, getDocumentUrl } from "../utils/documentUrl.js";
 import MessageSources from "../components/MessageSources.jsx";
+import { searchWebResearch } from "../services/webResearch.js";
+import WebSources from "../components/WebSources";
 // ------------------------------
 // Research modes
 // ------------------------------
@@ -103,7 +105,10 @@ function AssistantPanel({
   }, []);
 
   const canSubmit =
-    !isAsking && chatReady && documentReady && question.trim().length > 0;
+    !isAsking &&
+    chatReady &&
+    question.trim().length > 0 &&
+    (researchMode === "web" || documentReady);
 
   const placeholder = RESEARCH_MODES.find(
     (mode) => mode.id === researchMode,
@@ -201,20 +206,61 @@ function AssistantPanel({
   async function submitQuestion(value) {
     const userQuestion = value.trim();
 
-    if (!userQuestion || !documentReady || !chatReady || isAsking) return;
+    if (
+      !userQuestion ||
+      !chatReady ||
+      isAsking ||
+      (researchMode !== "web" && !documentReady)
+    ) {
+      return;
+    }
 
     setIsAsking(true);
     setError("");
     setQuestion("");
 
-    setMessages((prev) => [...prev, { role: "user", content: userQuestion }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userQuestion,
+      },
+    ]);
 
     try {
+      // ------------------------------
+      // WEB RESEARCH — Tavily + Groq
+      // ------------------------------
+      if (researchMode === "web") {
+        const result = await searchWebResearch(userQuestion);
+
+        if (!mounted.current) return;
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: result.answer,
+            mode: "web",
+            sources: result.sources || [],
+            model: result.model,
+            verification_status: result.verification_status,
+            disclaimer: result.disclaimer,
+          },
+        ]);
+
+        return;
+      }
+
+      // ------------------------------
+      // DOCUMENT RESEARCH — Existing RAG
+      // ------------------------------
       const result = await askQuestion(
         userQuestion,
         selectedDocument.id,
         chatId,
       );
+
       if (!mounted.current) return;
 
       setMessages((prev) => [
@@ -222,6 +268,7 @@ function AssistantPanel({
         {
           role: "assistant",
           content: result.answer,
+          mode: "documents",
           sources: result.sources,
           model: result.model,
         },
@@ -237,12 +284,16 @@ function AssistantPanel({
         }
       }
     } catch (err) {
-      setError(err.message);
+      if (!mounted.current) return;
+
+      setError(err.message || "Research request failed.");
 
       setMessages((prev) => prev.slice(0, -1));
       setQuestion(userQuestion);
     } finally {
-      setIsAsking(false);
+      if (mounted.current) {
+        setIsAsking(false);
+      }
     }
   }
 
@@ -310,9 +361,9 @@ function AssistantPanel({
   // ------------------------------
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div
-        className="mb-2 flex shrink-0 items-center gap-2 rounded-xl bg-[#f0eee6]/70 text-xs text-[#6b6a68] dark:bg-[#30302e] dark:text-[#b8b6ad]"
+        className="mb-2 flex min-w-0 shrink-0 items-center gap-2 rounded-xl bg-[#f0eee6]/70 text-[11px] sm:text-xs text-[#6b6a68] dark:bg-[#30302e] dark:text-[#b8b6ad]"
         style={{ padding: "9px 14px" }}
       >
         {documentReady && (
@@ -322,10 +373,12 @@ function AssistantPanel({
           />
         )}
         <span className="min-w-0 flex-1 truncate">
-          {isLoading
-            ? "Loading documents…"
-            : selectedDocument?.title ||
-              "Select a document from the sidebar to begin."}
+          {researchMode === "web"
+            ? "Web Research · Tavily Search"
+            : isLoading
+              ? "Loading documents…"
+              : selectedDocument?.title ||
+                "Select a document from the sidebar to begin."}
         </span>
         {selectedDocument && urlChatId && (
           <button
@@ -359,15 +412,22 @@ function AssistantPanel({
 
       {/* Conversation, or the greeting when the chat is empty */}
       {hasMessages ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="space-y-8 py-6">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+          <div className="space-y-6 px-1 py-4 sm:space-y-8 sm:py-6">
             {messages.map((message, index) => (
               <div key={index} className="space-y-2">
                 <ChatMessage role={message.role} content={message.content} />
 
                 {message.role === "assistant" && (
                   <>
-                    <MessageSources sources={message.sources} />
+                    {message.mode === "web" ? (
+                      <WebSources
+                        sources={message.sources || []}
+                        disclaimer={message.disclaimer}
+                      />
+                    ) : (
+                      <MessageSources sources={message.sources || []} />
+                    )}
 
                     {message.model && (
                       <p className="ml-[46px] text-[11px] text-[#9c9a92]">
@@ -394,11 +454,11 @@ function AssistantPanel({
           </div>
         </div>
       ) : (
-        <div className="flex flex-1 items-end justify-center pb-8">
+        <div className="flex min-h-0 flex-1 items-center justify-center px-2 pb-4 sm:items-end sm:pb-8">
           <h1
             className="text-center font-serif text-[#3d3929] dark:text-[#faf9f5]"
             style={{
-              fontSize: "clamp(2.25rem, 5vw, 3rem)",
+              fontSize: "clamp(1.75rem, 6vw, 3rem)",
               lineHeight: 1.15,
               letterSpacing: "-0.02em",
             }}
@@ -428,7 +488,7 @@ function AssistantPanel({
           placeholder={placeholder}
           maxLength={2000}
           rows={hasMessages ? 2 : 3}
-          className="w-full resize-none bg-transparent px-2 pt-1 text-[15px] leading-6 text-[#3d3929] outline-none placeholder:text-[#9c9a92] dark:text-[#faf9f5]"
+          className="w-full resize-none bg-transparent px-2 pt-1 text-base sm:text-[15px] leading-6 text-[#3d3929] outline-none placeholder:text-[#9c9a92] dark:text-[#faf9f5]"
         />
 
         <div className="mt-2 flex items-center justify-between gap-3">
@@ -456,7 +516,7 @@ function AssistantPanel({
 
       {/* Research modes */}
       <div
-        className={`flex shrink-0 flex-wrap items-center justify-center gap-2 pt-4 ${
+        className={`flex min-w-0 shrink-0 flex-nowrap items-center justify-start gap-2 overflow-x-auto overscroll-x-contain py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:justify-center sm:overflow-visible sm:pt-4 ${
           hasMessages ? "pb-1" : "pb-2"
         }`}
       >
@@ -466,7 +526,7 @@ function AssistantPanel({
             type="button"
             onClick={() => handleModeClick(mode.id)}
             aria-pressed={researchMode === mode.id}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+            className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-2 text-xs font-medium transition ${
               researchMode === mode.id
                 ? "border-[#192957]/25 bg-[#192957]/[0.07] text-[#192957] dark:border-[#a9b8f0]/30 dark:bg-[#a9b8f0]/10 dark:text-[#a9b8f0]"
                 : "border-[#e8e6dc] text-[#6b6a68] hover:bg-white hover:text-[#3d3929] dark:border-[#3d3d3a] dark:text-[#b8b6ad] dark:hover:bg-[#30302e] dark:hover:text-[#faf9f5]"
@@ -478,7 +538,7 @@ function AssistantPanel({
       </div>
 
       {/* Breathing room under the chips on the empty screen */}
-      {!hasMessages && <div className="flex-[1.2]" />}
+      {!hasMessages && <div className="hidden flex-[1.2] sm:block" />}
     </div>
   );
 }
@@ -490,6 +550,8 @@ function AssistantPanel({
 function Research() {
   const { user } = useAuth();
   const { documentSlug, chatId } = useParams();
+  const location = useLocation();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [darkMode, setDarkMode] = useState(
     () => localStorage.getItem("legalmind-theme") === "dark",
@@ -543,6 +605,28 @@ function Research() {
       loadDocuments();
     }
   }, [processingDocument, loadDocuments]);
+
+  // Close the drawer when navigating and allow Escape to dismiss it.
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") setMobileSidebarOpen(false);
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileSidebarOpen]);
 
   // Theme
   useEffect(() => {
@@ -604,38 +688,101 @@ function Research() {
     hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
   }, ${firstName}`;
 
+  const sidebarProps = {
+    onUpload: handleUpload,
+    isUploading,
+    documents,
+    isLoadingDocuments: isLoading,
+  };
+
   return (
-    <div className="h-screen overflow-hidden bg-[#faf9f5] transition-colors dark:bg-[#262624]">
+    <div className="h-[100dvh] overflow-hidden bg-[#faf9f5] transition-colors dark:bg-[#262624]">
       <Header
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode((prev) => !prev)}
       />
-      <Sidebar
-        onUpload={handleUpload}
-        isUploading={isUploading}
-        documents={documents}
-        isLoadingDocuments={isLoading}
-      />
 
-      <main className="ml-[260px] h-screen overflow-hidden pt-[74px]">
-        <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-6 pb-5 pt-4">
-          {/* Document error */}
+      {/* Preserve the existing desktop sidebar. */}
+      <div className="hidden lg:block">
+        <Sidebar {...sidebarProps} />
+      </div>
+
+      {/* Mobile drawer. The transformed wrapper also contains fixed-position
+          sidebar styles used by the existing desktop Sidebar component. */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-[100] lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <div
+            id="mobile-research-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Research navigation"
+            className="absolute inset-y-0 left-0 w-[min(85vw,300px)] overflow-hidden bg-[#faf9f5] shadow-2xl [transform:translateZ(0)] dark:bg-[#262624]"
+            onClickCapture={(event) => {
+              if (event.target.closest("a[href]")) {
+                setMobileSidebarOpen(false);
+              }
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-label="Close sidebar"
+              className="absolute right-3 top-3 z-[110] flex h-10 w-10 items-center justify-center rounded-lg bg-[#f0eee6] text-[#3d3929] dark:bg-[#383835] dark:text-white"
+            >
+              <X size={20} />
+            </button>
+            <Sidebar
+              {...sidebarProps}
+              mobile
+              onNavigate={() => setMobileSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      <main className="h-full min-w-0 overflow-hidden pt-[74px] lg:ml-[260px]">
+        <div className="mx-auto flex h-full w-full max-w-5xl min-w-0 flex-col px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:px-5 lg:px-6 lg:pb-5 lg:pt-4">
+          <div className="mb-2 flex shrink-0 items-center gap-2 lg:hidden">
+            <button
+              type="button"
+              aria-label="Open navigation"
+              aria-expanded={mobileSidebarOpen}
+              aria-controls="mobile-research-navigation"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#e8e6dc] text-[#3d3929] dark:border-[#454540] dark:text-[#faf9f5]"
+            >
+              <Menu size={20} />
+            </button>
+            <span className="truncate text-sm font-medium text-[#3d3929] dark:text-[#faf9f5]">
+              Research workspace
+            </span>
+          </div>
+
           {documentError && (
-            <p className="mb-3 shrink-0 text-center text-xs text-red-500">
+            <p className="mb-3 shrink-0 text-center text-xs text-red-500" role="alert">
               {documentError}
             </p>
           )}
+
           {processingDocument && (
-            <DocumentProgress document={processingDocument} />
+            <div className="shrink-0">
+              <DocumentProgress document={processingDocument} />
+            </div>
           )}
 
           {processingError && (
-            <p className="mb-3 text-center text-xs text-red-500">
+            <p className="mb-3 shrink-0 text-center text-xs text-red-500" role="alert">
               {processingError}
             </p>
           )}
-          {/* Assistant fills remaining height */}
-          <div className="min-h-0 flex-1">
+
+          <div className="min-h-0 min-w-0 flex-1">
             <AssistantPanel
               key={`${selectedDocumentId || "home"}:${chatId || "new"}`}
               selectedDocument={selectedDocument}

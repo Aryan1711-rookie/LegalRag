@@ -214,7 +214,7 @@ function SectionLabel({ children, light = false }) {
 function ResearchPreview() {
   return (
     <div
-      className="overflow-hidden text-white"
+      className="lm-home-preview overflow-hidden text-white"
       style={{
         ...layout.mockGrid,
         background: "linear-gradient(160deg, #192957 0%, #0f1a3d 100%)",
@@ -225,6 +225,7 @@ function ResearchPreview() {
     >
       {/* Documents */}
       <div
+        className="lm-home-preview-documents"
         style={{
           padding: 32,
           borderRight: "1px solid rgba(255,255,255,0.1)",
@@ -266,9 +267,9 @@ function ResearchPreview() {
       </div>
 
       {/* Conversation */}
-      <div style={{ padding: 32, gridColumn: "span 1" }}>
+      <div className="lm-home-preview-answer" style={{ padding: 32, gridColumn: "span 1" }}>
         <div
-          className="text-sm"
+          className="lm-home-preview-question text-sm"
           style={{
             background: "rgba(255,255,255,0.1)",
             borderRadius: 16,
@@ -380,7 +381,7 @@ function Home() {
   };
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#faf9f5] text-[#3d3929]">
+    <div className="lm-home min-h-screen overflow-x-clip bg-[#faf9f5] text-[#3d3929]">
       <style>{`
         @keyframes lm-marquee {
           from { transform: translateX(0); }
@@ -395,6 +396,41 @@ function Home() {
         @media (prefers-reduced-motion: reduce) {
           .lm-marquee-track { animation: none; }
         }
+
+        /* Responsive-only overrides. Desktop inline layout remains intact. */
+        .lm-home { width: 100%; }
+        .lm-home-column { width: 100%; box-sizing: border-box; }
+        .lm-home-preview, .lm-home-preview > div { min-width: 0; }
+        .lm-home-preview { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .lm-home-preview p { overflow-wrap: anywhere; }
+        .lm-home-preview-documents, .lm-home-preview-answer { min-width: 0; }
+        @media (max-width: 1023px) {
+          .lm-home-column { padding-left: 24px !important; padding-right: 24px !important; }
+          .lm-home-hero { padding-top: 76px !important; padding-bottom: 58px !important; }
+          .lm-home-section { padding-top: 80px !important; padding-bottom: 80px !important; }
+          .lm-home-feature-row { grid-template-columns: minmax(0, 1fr) !important; gap: 16px !important; }
+          .lm-home-steps { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .lm-home-preview-documents, .lm-home-preview-answer { padding: 24px !important; }
+          .lm-home-footer { padding-top: 28px !important; padding-bottom: 28px !important; }
+        }
+        @media (max-width: 639px) {
+          .lm-home-column { padding-left: 16px !important; padding-right: 16px !important; }
+          .lm-home-hero { padding-top: 54px !important; padding-bottom: 40px !important; }
+          .lm-home-hero-title { font-size: clamp(2.55rem, 10.5vw, 4.25rem) !important; line-height: 1.04 !important; margin-top: 28px !important; overflow-wrap: anywhere; }
+          .lm-home-lead { font-size: 1rem !important; line-height: 1.7 !important; }
+          .lm-home-section { padding-top: 60px !important; padding-bottom: 60px !important; }
+          .lm-home-preview { grid-template-columns: minmax(0, 1fr) !important; border-radius: 18px !important; }
+          .lm-home-preview-documents { border-right: 0 !important; border-bottom: 1px solid rgba(255,255,255,0.1); }
+          .lm-home-preview-documents, .lm-home-preview-answer { padding: 20px !important; }
+          .lm-home-preview-question { margin-left: 0 !important; }
+          .lm-home-steps { grid-template-columns: minmax(0, 1fr) !important; margin-top: 36px !important; }
+          .lm-home-steps > div { min-height: 215px !important; padding: 24px !important; }
+          .lm-home-feature-row { padding-top: 24px !important; padding-bottom: 24px !important; }
+          .lm-home-marquee { margin-top: 56px !important; padding-top: 20px !important; padding-bottom: 20px !important; }
+          .lm-home-footer { align-items: flex-start !important; padding-top: 24px !important; padding-bottom: 24px !important; }
+          .lm-home-primary-cta { padding: 14px 22px !important; }
+          .lm-home-secondary-cta { display: inline-flex; align-items: center; min-height: 44px; }
+        }
       `}</style>
 
       <AnimatePresence>{showPreloader && <Preloader />}</AnimatePresence>
@@ -408,11 +444,12 @@ function Home() {
 
       {/* Hero */}
 
-      <section style={layout.column}>
+      <section className="lm-home-column" style={layout.column}>
         <motion.div
           variants={stagger}
           initial="hidden"
           animate="visible"
+          className="lm-home-hero"
           style={layout.hero}
         >
           <motion.div variants={fadeUp}>
@@ -444,7 +481,7 @@ function Home() {
 
           <motion.h1
             variants={fadeUp}
-            className="font-serif"
+            className="lm-home-hero-title font-serif"
             style={{
               fontSize: "clamp(3.25rem, 10vw, 8rem)",
               lineHeight: 0.98,
@@ -468,7 +505,7 @@ function Home() {
           >
             <motion.p
               variants={fadeUp}
-              className="text-lg text-[#6b6a68]"
+              className="lm-home-lead text-lg text-[#6b6a68]"
               style={{ maxWidth: 520, lineHeight: 1.75 }}
             >
               Understand complex judgments, explore legal documents and discover
@@ -482,7 +519,7 @@ function Home() {
               >
                 <Link
                   to="/research"
-                  className="rounded-full bg-[#192957] text-sm font-medium text-white transition hover:bg-[#223675]"
+                  className="lm-home-primary-cta rounded-full bg-[#192957] text-sm font-medium text-white transition hover:bg-[#223675]"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -497,7 +534,7 @@ function Home() {
 
               <Link
                 to="/register"
-                className="text-sm font-medium text-[#3d3929] underline decoration-[#d6d4cb] underline-offset-[6px] transition hover:decoration-[#192957]"
+                className="lm-home-secondary-cta text-sm font-medium text-[#3d3929] underline decoration-[#d6d4cb] underline-offset-[6px] transition hover:decoration-[#192957]"
               >
                 Create account
               </Link>
@@ -513,7 +550,7 @@ function Home() {
       {/* Technology marquee */}
 
       <section
-        className="lm-marquee border-y border-[#e8e6dc]"
+        className="lm-home-marquee lm-marquee border-y border-[#e8e6dc]"
         style={{ marginTop: 96, padding: "28px 0", overflow: "hidden" }}
         aria-label="Technology"
       >
@@ -541,7 +578,7 @@ function Home() {
 
       {/* Statement */}
 
-      <section style={{ ...layout.column, ...layout.section }}>
+      <section className="lm-home-column lm-home-section lm-home-column lm-home-section lm-home-column lm-home-section lm-home-column lm-home-section" style={{ ...layout.column, ...layout.section }}>
         <motion.div {...reveal}>
           <SectionLabel>Under the hood</SectionLabel>
 
@@ -629,7 +666,7 @@ function Home() {
                   onMouseEnter={() => setActiveFeature(index)}
                   onFocus={() => setActiveFeature(index)}
                   onBlur={() => setActiveFeature(null)}
-                  className="border-t border-[#e8e6dc] outline-none"
+                  className="lm-home-feature-row border-t border-[#e8e6dc] outline-none"
                   style={{
                     ...layout.featureRow,
                     opacity: activeFeature === null || active ? 1 : 0.45,
@@ -706,6 +743,7 @@ function Home() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, amount: 0.2 }}
+            className="lm-home-steps"
             style={{ ...layout.stepsGrid, marginTop: 72 }}
           >
             {STEPS.map((step) => (
@@ -778,7 +816,7 @@ function Home() {
               >
                 <Link
                   to="/research"
-                  className="rounded-full bg-white text-sm font-medium text-[#192957] transition hover:bg-[#f0eee6]"
+                  className="lm-home-primary-cta rounded-full bg-white text-sm font-medium text-[#192957] transition hover:bg-[#f0eee6]"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -793,7 +831,7 @@ function Home() {
 
               <Link
                 to="/register"
-                className="text-sm font-medium text-white underline decoration-white/30 underline-offset-[6px] transition hover:decoration-white"
+                className="lm-home-secondary-cta text-sm font-medium text-white underline decoration-white/30 underline-offset-[6px] transition hover:decoration-white"
               >
                 Create account
               </Link>
@@ -806,7 +844,7 @@ function Home() {
 
       <footer className="bg-[#0f1a3d] text-white/60">
         <div
-          className="text-xs"
+          className="lm-home-column lm-home-footer text-xs"
           style={{
             ...layout.column,
             padding: "32px",

@@ -34,3 +34,6 @@ huggingface-hub
 
 # LLM
 groq
+
+#Web Services
+tavily==0.8.5
